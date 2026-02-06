@@ -5,7 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch:  # Erlaubt manuelles Starten per Klick
+  workflow_dispatch:
 
 jobs:
   build:
@@ -28,11 +28,11 @@ jobs:
         pip install pyinstaller
 
     - name: Build EXE with PyInstaller
-      # --onefile: Alles in eine .exe packen
-      # --windowed: Kein Konsolenfenster anzeigen (optional, gut für GUIs)
-      # --add-data: config.yaml mit einpacken (Syntax für Windows: quelle;ziel)
+      # ÄNDERUNGEN HIER:
+      # 1. --add-data "assets;assets" -> Packt deine eigenen Icons/Themes ein
+      # 2. --collect-all customtkinter -> Packt die Bibliothek-Dateien ein
       run: |
-        pyinstaller --noconfirm --onefile --windowed --name ARGUS --add-data "config.yaml;." src/main.py
+        pyinstaller --noconfirm --onefile --windowed --name ARGUS --add-data "config.yaml;." --add-data "assets;assets" --collect-all customtkinter src/main.py
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
