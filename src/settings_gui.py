@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Settings GUI Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 Provides a CTkToplevel settings window for editing config.yaml
 without manual file editing.
 """

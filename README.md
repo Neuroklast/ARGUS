@@ -219,7 +219,10 @@ Third-party open-source components are listed in
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+Contributions are subject to the proprietary license terms.
+Please contact the author before submitting pull requests.
+By contributing, you agree that your contributions become the
+intellectual property of the project owner.
 
 ## Acknowledgments
 

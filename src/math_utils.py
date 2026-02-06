@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Mathematical Utilities Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 This module provides vector mathematics for azimuth calculations
 including GEM (German Equatorial Mount) offset corrections.
 """

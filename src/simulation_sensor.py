@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Simulation Sensor Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 Provides a simple simulated dome sensor for testing the GUI
 without requiring real hardware.
 """

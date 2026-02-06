@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 ASCOM Telescope Handler Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 This module provides communication with ASCOM-compatible telescopes
 using win32com.client to retrieve telescope data (RA, Dec, SideOfPier).
 Includes automatic reconnection on COM errors.
@@ -48,14 +51,14 @@ class ASCOMHandler:
             True if connection successful, False otherwise
         """
         try:
-            self.logger.info(f"Connecting to ASCOM telescope: {self.prog_id}")
+            self.logger.info("Connecting to ASCOM telescope: %s", self.prog_id)
             self.telescope = win32com.client.Dispatch(self.prog_id)
             self.telescope.Connected = True
             self.connected = True
             self.logger.info("ASCOM telescope connected successfully")
             return True
         except Exception as e:
-            self.logger.error(f"Failed to connect to ASCOM telescope: {e}")
+            self.logger.error("Failed to connect to ASCOM telescope: %s", e)
             self.connected = False
             return False
 
@@ -67,7 +70,7 @@ class ASCOMHandler:
                 self.connected = False
                 self.logger.info("ASCOM telescope disconnected")
             except Exception as e:
-                self.logger.error(f"Error disconnecting telescope: {e}")
+                self.logger.error("Error disconnecting telescope: %s", e)
 
     def _attempt_reconnect(self) -> bool:
         """Try to re-establish the ASCOM connection with backoff.
@@ -107,7 +110,7 @@ class ASCOMHandler:
                 'azimuth': az
             }
         except Exception as e:
-            self.logger.error(f"Error getting telescope position: {e}")
+            self.logger.error("Error getting telescope position: %s", e)
             self.connected = False
             if self._attempt_reconnect():
                 return self.get_position()
@@ -135,7 +138,7 @@ class ASCOMHandler:
                 self.logger.warning("Telescope does not support SideOfPier")
                 return None
         except Exception as e:
-            self.logger.error(f"Error getting SideOfPier: {e}")
+            self.logger.error("Error getting SideOfPier: %s", e)
             self.connected = False
             self._attempt_reconnect()
             return None
@@ -153,7 +156,7 @@ class ASCOMHandler:
         try:
             return self.telescope.Tracking
         except Exception as e:
-            self.logger.error(f"Error getting tracking state: {e}")
+            self.logger.error("Error getting tracking state: %s", e)
             self.connected = False
             self._attempt_reconnect()
             return False

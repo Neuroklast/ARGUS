@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 GUI Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 Professional dark-mode interface built with customtkinter for
 observatory dome control and monitoring.
 """

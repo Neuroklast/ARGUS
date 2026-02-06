@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Main Application Entry Point (Controller Pattern)
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 Loads config.yaml, initializes hardware modules, and provides
 a state-machine-driven control loop for MANUAL and AUTO-SLAVE modes.
 Includes degraded-mode logic, outlier rejection, hysteresis, and

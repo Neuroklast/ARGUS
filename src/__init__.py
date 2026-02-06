@@ -1,6 +1,9 @@
 """
 ARGUS - Advanced Rotation Guidance Using Sensors
 Package initialization
+
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
 """
 
 __version__ = "0.1.0"

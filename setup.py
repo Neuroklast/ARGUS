@@ -1,6 +1,9 @@
 """
 ARGUS - Advanced Rotation Guidance Using Sensors
 Setup configuration
+
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
 """
 
 from setuptools import setup, find_packages
@@ -20,16 +23,18 @@ if requirements_file.exists():
 setup(
     name="argus",
     version="0.1.0",
-    author="ARGUS Development Team",
+    author="Kay Schäfer",
     description="Advanced Rotation Guidance Using Sensors - Hybrid dome-slaving system",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Neuroklast/ARGUS",
+    license="Proprietary",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",
         "Topic :: Scientific/Engineering :: Astronomy",
+        "License :: Other/Proprietary License",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
