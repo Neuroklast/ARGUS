@@ -52,3 +52,9 @@ logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
   file: "argus.log"
   console: true
+
+# Safety (Protruding Telescope Collision Avoidance)
+safety:
+  telescope_protrudes: true   # True = danger of collision
+  safe_altitude: 90.0         # Park position (e.g. zenith) for safe dome rotation
+  max_nudge_while_protruding: 2.0  # Max dome correction in degrees while telescope is in slit
