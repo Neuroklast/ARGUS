@@ -375,7 +375,7 @@ class ArgusController:
             dome_az = self.sensor.get_azimuth()
 
             # -- Voice feedback: Moving → Stopped -------------------------
-            current_status = "Moving" if self.sensor.slew_rate != 0.0 else "Stopped"
+            current_status = "Moving" if abs(self.sensor.slew_rate) > 1e-6 else "Stopped"
             if self._last_status == "Moving" and current_status == "Stopped":
                 if self.voice:
                     self.voice.say("Target reached")

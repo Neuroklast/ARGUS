@@ -170,7 +170,8 @@ class ArgusApp(ctk.CTk):
         )
 
         # 2. Red arrow for mount azimuth (telescope)
-        angle_rad = math.radians(mount_az - 90)  # 0° = North (up)
+        # Tk canvas angles: 0° = East, so subtract 90° to map azimuth 0° → North (up)
+        angle_rad = math.radians(mount_az - 90)
         arrow_len = r - 6
         ax = cx + arrow_len * math.cos(angle_rad)
         ay = cy + arrow_len * math.sin(angle_rad)
