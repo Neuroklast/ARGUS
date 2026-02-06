@@ -35,13 +35,6 @@ jobs:
       run: |
         pyinstaller --noconfirm --onedir --windowed --name ARGUS --paths src --add-data "config.yaml;." --add-data "assets;assets" --collect-all customtkinter src/main.py
 
-    # SCHRITT 2: Inno Setup (Erstellt setup.exe)
-    - name: Compile Installer (Inno Setup)
-      uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
-      with:
-        path: setup.iss
-        options: /O+
-
     # SCHRITT 3: ZIP (Erstellt portable Version)
     - name: Create Portable ZIP
       run: |
