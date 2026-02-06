@@ -156,7 +156,8 @@ class MathUtils:
         return azimuth_deg
     
     def calculate_required_azimuth(self, ra: float, dec: float,
-                                   side_of_pier: Optional[int] = None) -> float:
+                                   side_of_pier: Optional[int] = None,
+                                   obstime: Optional['Time'] = None) -> float:
         """
         Calculate required dome azimuth from telescope coordinates.
         
@@ -164,12 +165,13 @@ class MathUtils:
             ra: Right Ascension in hours
             dec: Declination in degrees
             side_of_pier: Side of pier (0=East, 1=West)
+            obstime: Observation time (defaults to now)
             
         Returns:
             Required dome azimuth in degrees
         """
         # Convert RA/Dec to Alt/Az
-        altitude, azimuth = self.ra_dec_to_altaz(ra, dec)
+        altitude, azimuth = self.ra_dec_to_altaz(ra, dec, obstime=obstime)
         
         # Calculate telescope vector with GEM offset
         telescope_vec = self.calculate_telescope_vector(

@@ -56,6 +56,16 @@ try:
 except ImportError:                     # pragma: no cover
     OffsetSolver = None                 # type: ignore[assignment,misc]
 
+try:
+    from data_loader import load_calibration_data
+except ImportError:                     # pragma: no cover
+    load_calibration_data = None        # type: ignore[assignment,misc]
+
+try:
+    from replay_handler import ReplayASCOMHandler
+except ImportError:                     # pragma: no cover
+    ReplayASCOMHandler = None           # type: ignore[assignment,misc]
+
 logger = logging.getLogger(__name__)
 
 from path_utils import get_base_path
@@ -854,6 +864,69 @@ class ArgusController:
         finally:
             with self._lock:
                 self._mode = old_mode
+
+    # ---- Demo / Replay mode ---------------------------------------------
+    def _run_demo_sequence(self, csv_path: str, speed: float = 1.0) -> None:
+        """Play back a recorded session from a CSV file.
+
+        During replay the real ASCOM handler is temporarily replaced
+        with a :class:`ReplayASCOMHandler` so the normal control loop
+        processes the recorded data as if the mount were moving live.
+
+        Args:
+            csv_path: Path to a calibration CSV file.
+            speed:    Playback speed multiplier (default 1×).
+        """
+        if load_calibration_data is None or ReplayASCOMHandler is None:
+            logger.error("Replay modules not available")
+            return
+
+        data = load_calibration_data(csv_path)
+        if not data:
+            logger.error("No data loaded from %s", csv_path)
+            return
+
+        replay = ReplayASCOMHandler(data, speed=speed)
+
+        # Hot-swap: save real handler and inject replay handler
+        self.real_ascom = self.ascom
+        self.ascom = replay
+        logger.info("DEMO MODE: Replay started from %s (%d records)", csv_path, len(data))
+
+        try:
+            # Update GUI status if available
+            if self.app:
+                try:
+                    self.app.after(
+                        0,
+                        lambda: self.app.update_status("REPLAY: [Orion Nebula]"),
+                    )
+                except Exception:
+                    pass
+
+            # Voice announcement for status changes
+            last_status = None
+
+            # Let the normal control loop run while replaying
+            duration = replay._data_duration / speed
+            start = time.time()
+            while time.time() - start < duration and self._running:
+                # Check for status changes and trigger voice
+                current_status = replay.current_status
+                if current_status != last_status:
+                    logger.info("REPLAY STATUS: %s", current_status)
+                    if self.voice and current_status in ("SLEWING", "TRACKING"):
+                        try:
+                            self.voice.say(current_status.replace("_", " ").title())
+                        except Exception:
+                            pass
+                    last_status = current_status
+                time.sleep(0.5)
+        finally:
+            # Restore original handler
+            self.ascom = self.real_ascom
+            self.real_ascom = None
+            logger.info("DEMO MODE: Replay finished – original ASCOM restored")
 
     # ---- Cleanup --------------------------------------------------------
     def shutdown(self):
