@@ -20,9 +20,9 @@ pytestmark = pytest.mark.skipif(
 def controller():
     """Create a single ArgusController for all tests in this module."""
     from main import ArgusController
-    ctrl = ArgusController()
+    ctrl = ArgusController(config={})
     yield ctrl
-    ctrl._running = False
+    ctrl.shutdown()
     ctrl.app.destroy()
 
 
