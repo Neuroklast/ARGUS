@@ -22,11 +22,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 class TestGuiLogHandler:
     """Test the custom logging handler that forwards to the GUI."""
 
-    def test_emit_calls_app_after(self):
+    def test_emit_calls_gui_write_log(self):
         from main import GuiLogHandler
 
-        mock_app = MagicMock()
-        handler = GuiLogHandler(mock_app)
+        mock_gui = MagicMock()
+        handler = GuiLogHandler(mock_gui)
         handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
 
         record = logging.LogRecord(
@@ -35,18 +35,16 @@ class TestGuiLogHandler:
         )
         handler.emit(record)
 
-        mock_app.after.assert_called_once()
-        args = mock_app.after.call_args[0]
-        assert args[0] == 0
-        assert args[1] == mock_app.append_log
-        assert "Hello world" in args[2]
+        mock_gui.write_log.assert_called_once()
+        args = mock_gui.write_log.call_args[0]
+        assert "Hello world" in args[0]
 
     def test_emit_handles_exception_gracefully(self):
         from main import GuiLogHandler
 
-        mock_app = MagicMock()
-        mock_app.after.side_effect = RuntimeError("GUI destroyed")
-        handler = GuiLogHandler(mock_app)
+        mock_gui = MagicMock()
+        mock_gui.write_log.side_effect = RuntimeError("GUI destroyed")
+        handler = GuiLogHandler(mock_gui)
         handler.setFormatter(logging.Formatter("%(message)s"))
 
         record = logging.LogRecord(
