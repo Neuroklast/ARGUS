@@ -310,6 +310,11 @@ class ArgusGUI:
             dome_az:  Current dome azimuth in degrees.
         """
         error = mount_az - dome_az
+        # Normalise to ±180° so the error is meaningful near the 0°/360° boundary
+        if error > 180:
+            error -= 360
+        elif error < -180:
+            error += 360
         self.lbl_mount_az.value = f"{mount_az:06.1f}°"
         self.lbl_dome_az.value = f"{dome_az:06.1f}°"
         self.lbl_error.value = f"{error:+06.1f}°"

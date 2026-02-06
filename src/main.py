@@ -576,7 +576,6 @@ class ArgusController:
             self.dome_driver.slew_to(target_az, speed)
         elif self.serial:
             self.serial.move_to_azimuth(target_az, speed)
-        self.sensor.target_azimuth = target_az
         logger.info("Move dome to %.1f°", target_az)
 
     def stop_dome(self) -> None:
@@ -699,6 +698,21 @@ class ArgusController:
         )
         return None
 
+    def _check_vision_markers(self) -> bool:
+        """Capture a frame and return whether markers are visible.
+
+        Returns:
+            ``True`` when at least one ArUco marker is detected,
+            ``False`` when capture fails or no markers are found.
+        """
+        if self.vision is None:
+            return True  # no camera ⇒ no lost signal
+        frame = self.vision.capture_frame()
+        if frame is None:
+            return False
+        markers = self.vision.detect_markers(frame)
+        return bool(markers)
+
     # ---- Mode management (thread-safe) ----------------------------------
     def on_mode_changed(self, value: str):
         """Handle mode change from GUI segmented button."""
@@ -767,6 +781,10 @@ class ArgusController:
                         pass
                 self.sensor.slew_rate = 0.0
 
+            # Track whether vision saw a marker this tick (avoids double capture)
+            vision_ok = True
+            vision_checked = False
+
             if current_mode == "AUTO-SLAVE" and health != HEALTH_CRITICAL:
                 # Step 1 – telescope position
                 telescope_data = None
@@ -787,8 +805,10 @@ class ArgusController:
                     # Step 3 – vision drift correction (only if HEALTHY)
                     if drift_enabled and self.vision and health == HEALTH_HEALTHY:
                         frame = self.vision.capture_frame()
+                        vision_checked = True
                         if frame is not None:
                             markers = self.vision.detect_markers(frame)
+                            vision_ok = bool(markers)
                             if markers:
                                 shape = markers.get("frame_shape")
                                 if shape:
@@ -810,6 +830,8 @@ class ArgusController:
                                     accepted = self._filter_drift(corrected)
                                     if accepted is not None:
                                         target_az = accepted
+                        else:
+                            vision_ok = False
 
                     elif health == HEALTH_DEGRADED:
                         if self._last_vision_ok:
@@ -836,14 +858,9 @@ class ArgusController:
             self._last_status = current_status
 
             # -- Voice feedback: Vision marker lost -----------------------
-            vision_ok = True
+            if not vision_checked and drift_enabled:
+                vision_ok = self._check_vision_markers()
             if self.vision:
-                frame = self.vision.capture_frame() if drift_enabled else None
-                if frame is not None:
-                    markers = self.vision.detect_markers(frame)
-                    vision_ok = bool(markers)
-                else:
-                    vision_ok = False
                 if self._last_vision_ok and not vision_ok:
                     logger.warning("Vision contact lost")
                     if self.voice:
@@ -891,7 +908,6 @@ class ArgusController:
             # Step 2 – Slew dome
             if self.serial:
                 self.serial.move_to_azimuth(target_dome_az, 50)
-            self.sensor.target_azimuth = target_dome_az
             # Wait for dome (simulation)
             for _ in range(200):
                 curr = self.sensor.get_azimuth()
@@ -902,7 +918,6 @@ class ArgusController:
             # Small correction – move dome directly
             if self.serial:
                 self.serial.move_to_azimuth(target_dome_az, 50)
-            self.sensor.target_azimuth = target_dome_az
 
     # ---- Calibration mode -----------------------------------------------
     def run_calibration(self) -> Optional[dict]:
@@ -1010,7 +1025,7 @@ class ArgusController:
             last_status = None
 
             # Let the normal control loop run while replaying
-            duration = replay._data_duration / speed
+            duration = replay.data_duration / speed
             start = time.time()
             while time.time() - start < duration and self._running:
                 # Check for status changes and trigger voice

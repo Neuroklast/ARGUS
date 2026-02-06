@@ -85,8 +85,9 @@ class RelayProtocol(ProtocolTranslator):
     """Simple relay ON/OFF protocol for time-based motors."""
 
     def move_to(self, position: float, speed: int = 50) -> str:
-        # For relay control the direction is encoded as CW/CCW
-        return f"RELAY CW"
+        # Relay motors don't support absolute positioning; the caller
+        # (TimedDriver) determines direction.  Default to CW.
+        return "RELAY CW"
 
     def stop(self) -> str:
         return "RELAY OFF"

@@ -60,6 +60,11 @@ class ReplayASCOMHandler:
             len(data), self._data_duration, self.speed,
         )
 
+    @property
+    def data_duration(self) -> float:
+        """Total duration of the replay data in seconds."""
+        return self._data_duration
+
     # -- internal helpers ------------------------------------------------
 
     def _current_data_time(self) -> float:
@@ -101,13 +106,18 @@ class ReplayASCOMHandler:
         self.connected = False
 
     def get_position(self) -> Optional[Dict[str, float]]:
-        """Return the replayed telescope position (nearest-neighbour)."""
+        """Return the replayed telescope position (nearest-neighbour).
+
+        Legacy (semicolon) records contain ``ra``, ``dec``, ``az``, ``alt``.
+        Comma-format records only provide ``ha`` and ``dec``; missing keys
+        default to ``0.0`` so callers always receive a complete dict.
+        """
         rec = self._nearest_record()
         return {
-            "ra": rec["ra"],
-            "dec": rec["dec"],
-            "altitude": rec["alt"],
-            "azimuth": rec["az"],
+            "ra": rec.get("ra", 0.0),
+            "dec": rec.get("dec", 0.0),
+            "altitude": rec.get("alt", 0.0),
+            "azimuth": rec.get("az", 0.0),
         }
 
     def get_side_of_pier(self) -> Optional[int]:

@@ -14,7 +14,7 @@ from .ascom_handler import ASCOMHandler
 from .vision import VisionSystem
 from .serial_ctrl import SerialController
 from .math_utils import MathUtils
-from .gui import ArgusApp
+from .gui import ArgusGUI
 from .simulation_sensor import SimulationSensor
 
 __all__ = [
@@ -22,6 +22,6 @@ __all__ = [
     'VisionSystem',
     'SerialController',
     'MathUtils',
-    'ArgusApp',
+    'ArgusGUI',
     'SimulationSensor',
 ]
