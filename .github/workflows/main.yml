@@ -1,4 +1,4 @@
-name: Build ARGUS Portable
+name: Build ARGUS Installer
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build-release:
     runs-on: windows-latest
 
     steps:
@@ -29,22 +29,32 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Build Portable Folder
-      # --onedir: Erstellt einen Ordner statt einer Datei
-      # Wir packen config und assets direkt dazu
+    # SCHRITT 1: PyInstaller (mit Pfad-Fix)
+    - name: Build Application Folder
+      # NEU: --paths src (Damit er gui.py und vision.py findet)
       run: |
-        pyinstaller --noconfirm --onedir --windowed --name ARGUS --add-data "config.yaml;." --add-data "assets;assets" --collect-all customtkinter src/main.py
+        pyinstaller --noconfirm --onedir --windowed --name ARGUS --paths src --add-data "config.yaml;." --add-data "assets;assets" --collect-all customtkinter src/main.py
 
-    - name: Zip the Build
-      # Packt den erstellten Ordner (dist/ARGUS) in eine ZIP-Datei
+    # SCHRITT 2: Inno Setup (Erstellt setup.exe)
+    - name: Compile Installer (Inno Setup)
+      uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+      with:
+        path: setup.iss
+        options: /O+
+
+    # SCHRITT 3: ZIP (Erstellt portable Version)
+    - name: Create Portable ZIP
       run: |
-        powershell Compress-Archive -Path dist/ARGUS -DestinationPath dist/ARGUS-Portable.zip
+        powershell Compress-Archive -Path dist/ARGUS -DestinationPath dist/ARGUS_Portable.zip
 
+    # SCHRITT 4: Release hochladen
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: dist/ARGUS-Portable.zip
+        files: |
+          dist/ARGUS_Setup.exe
+          dist/ARGUS_Portable.zip
         draft: false
         prerelease: false
       env:
