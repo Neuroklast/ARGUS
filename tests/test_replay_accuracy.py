@@ -73,9 +73,11 @@ def _ha_to_ra(ha_hours: float, timestamp: str, longitude: float) -> float:
         Right Ascension in decimal hours.
     """
     obstime = Time(timestamp, format="isot", scale="utc")
-    location = EarthLocation(lon=longitude * u.deg, lat=0 * u.deg, height=0 * u.m)
+    location = EarthLocation(
+        lon=longitude * u.deg, lat=SITE_LAT * u.deg, height=SITE_ELEV * u.m
+    )
     lst = obstime.sidereal_time("apparent", longitude=location.lon)
-    ra = (lst.hour - ha_hours) % 24.0
+    ra = (lst.hour - ha_hours + 24.0) % 24.0
     return ra
 
 

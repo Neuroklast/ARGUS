@@ -102,7 +102,6 @@ class ArgusGUI:
         )
 
         # Log list
-        self._log_items: list[ft.Text] = []
         self.log_list = ft.ListView(
             height=120, spacing=2, auto_scroll=True,
         )
@@ -332,13 +331,10 @@ class ArgusGUI:
         line = f"[{timestamp}] {message}"
         entry = ft.Text(line, size=10, font_family="RobotoMono",
                         color="#CCCCCC")
-        self._log_items.append(entry)
         self.log_list.controls.append(entry)
         # Keep at most 200 lines
-        if len(self._log_items) > 200:
-            removed = self._log_items.pop(0)
-            if removed in self.log_list.controls:
-                self.log_list.controls.remove(removed)
+        if len(self.log_list.controls) > 200:
+            self.log_list.controls.pop(0)
         try:
             self.page.update()
         except Exception:

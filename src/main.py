@@ -318,7 +318,7 @@ class ArgusController:
             gui.btn_stop.on_click = lambda e: self.on_stop()
             gui.btn_cw.on_click = lambda e: self.on_move_right()
             gui.mode_selector.on_change = lambda e: self.on_mode_changed(
-                next(iter(e.control.selected))
+                next(iter(e.control.selected), "MANUAL")
             )
             gui.btn_settings.on_click = lambda e: show_settings_dialog(
                 gui.page, self.config, self._on_settings_saved,
