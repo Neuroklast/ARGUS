@@ -698,6 +698,21 @@ class ArgusController:
         )
         return None
 
+    def _check_vision_markers(self) -> bool:
+        """Capture a frame and return whether markers are visible.
+
+        Returns:
+            ``True`` when at least one ArUco marker is detected,
+            ``False`` when capture fails or no markers are found.
+        """
+        if self.vision is None:
+            return True  # no camera ⇒ no lost signal
+        frame = self.vision.capture_frame()
+        if frame is None:
+            return False
+        markers = self.vision.detect_markers(frame)
+        return bool(markers)
+
     # ---- Mode management (thread-safe) ----------------------------------
     def on_mode_changed(self, value: str):
         """Handle mode change from GUI segmented button."""
@@ -843,13 +858,8 @@ class ArgusController:
             self._last_status = current_status
 
             # -- Voice feedback: Vision marker lost -----------------------
-            if not vision_checked and self.vision and drift_enabled:
-                frame = self.vision.capture_frame()
-                if frame is not None:
-                    markers = self.vision.detect_markers(frame)
-                    vision_ok = bool(markers)
-                else:
-                    vision_ok = False
+            if not vision_checked and drift_enabled:
+                vision_ok = self._check_vision_markers()
             if self.vision:
                 if self._last_vision_ok and not vision_ok:
                     logger.warning("Vision contact lost")
