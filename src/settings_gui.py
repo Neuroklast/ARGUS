@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = get_base_path() / "config.yaml"
 
+# ArUco dictionary options for the dropdown
+ARUCO_DICTIONARIES = [
+    "DICT_4X4_50", "DICT_4X4_100", "DICT_4X4_250", "DICT_4X4_1000",
+    "DICT_5X5_50", "DICT_5X5_100", "DICT_5X5_250", "DICT_5X5_1000",
+    "DICT_6X6_50", "DICT_6X6_100", "DICT_6X6_250", "DICT_6X6_1000",
+    "DICT_7X7_50", "DICT_7X7_100", "DICT_7X7_250", "DICT_7X7_1000",
+]
+
 
 class SettingsWindow(ctk.CTkToplevel):
     """Settings window for editing ARGUS configuration."""
@@ -34,7 +42,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # -- Window setup ------------------------------------------------
         self.title("ARGUS – Settings")
-        self.geometry("480x420")
+        self.geometry("520x560")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
@@ -50,6 +58,9 @@ class SettingsWindow(ctk.CTkToplevel):
         self._build_vision_tab()
         self._build_ascom_tab()
         self._build_location_tab()
+        self._build_geometry_tab()
+        self._build_control_tab()
+        self._build_safety_tab()
 
         # -- Save button -------------------------------------------------
         self.btn_save = ctk.CTkButton(
@@ -91,12 +102,13 @@ class SettingsWindow(ctk.CTkToplevel):
         self.entry_baud_rate.grid(row=1, column=1, sticky="ew", padx=8, pady=6)
 
     def _build_vision_tab(self):
-        """Vision tab: camera_index and marker_size."""
+        """Vision tab: camera_index, marker_size, resolution, ArUco dictionary."""
         tab = self.tabview.add("Vision")
         tab.grid_columnconfigure(1, weight=1)
 
         vis = self.config.get("vision", {})
         aruco = vis.get("aruco", {})
+        res = vis.get("resolution", {})
 
         ctk.CTkLabel(tab, text="Camera Index:").grid(
             row=0, column=0, sticky="w", padx=8, pady=6
@@ -113,6 +125,27 @@ class SettingsWindow(ctk.CTkToplevel):
         self.entry_marker_size = ctk.CTkEntry(tab)
         self.entry_marker_size.insert(0, str(aruco.get("marker_size", 0.05)))
         self.entry_marker_size.grid(row=1, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="Resolution Width:").grid(
+            row=2, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_res_width = ctk.CTkEntry(tab)
+        self.entry_res_width.insert(0, str(res.get("width", 1280)))
+        self.entry_res_width.grid(row=2, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="Resolution Height:").grid(
+            row=3, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_res_height = ctk.CTkEntry(tab)
+        self.entry_res_height.insert(0, str(res.get("height", 720)))
+        self.entry_res_height.grid(row=3, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="ArUco Dictionary:").grid(
+            row=4, column=0, sticky="w", padx=8, pady=6
+        )
+        self.opt_aruco_dict = ctk.CTkOptionMenu(tab, values=ARUCO_DICTIONARIES)
+        self.opt_aruco_dict.set(str(aruco.get("dictionary", "DICT_4X4_50")))
+        self.opt_aruco_dict.grid(row=4, column=1, sticky="ew", padx=8, pady=6)
 
     def _build_ascom_tab(self):
         """ASCOM tab: telescope_prog_id."""
@@ -158,6 +191,130 @@ class SettingsWindow(ctk.CTkToplevel):
         self.entry_elevation.insert(0, str(obs.get("elevation", 0)))
         self.entry_elevation.grid(row=2, column=1, sticky="ew", padx=8, pady=6)
 
+    def _build_geometry_tab(self):
+        """Geometry tab: dome specs and mount specs."""
+        tab = self.tabview.add("Geometry")
+        tab.grid_columnconfigure(1, weight=1)
+
+        dome = self.config.get("math", {}).get("dome", {})
+        mount = self.config.get("math", {}).get("mount", {})
+
+        ctk.CTkLabel(tab, text="Dome Radius (m):").grid(
+            row=0, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_dome_radius = ctk.CTkEntry(tab)
+        self.entry_dome_radius.insert(0, str(dome.get("radius", 2.5)))
+        self.entry_dome_radius.grid(row=0, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="Slit Width (m):").grid(
+            row=1, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_slit_width = ctk.CTkEntry(tab)
+        self.entry_slit_width.insert(0, str(dome.get("slit_width", 0.8)))
+        self.entry_slit_width.grid(row=1, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="Pier Height (m):").grid(
+            row=2, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_pier_height = ctk.CTkEntry(tab)
+        self.entry_pier_height.insert(0, str(mount.get("pier_height", 1.5)))
+        self.entry_pier_height.grid(row=2, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="GEM Offset East (m):").grid(
+            row=3, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_gem_offset_east = ctk.CTkEntry(tab)
+        self.entry_gem_offset_east.insert(0, str(mount.get("gem_offset_east", 0.0)))
+        self.entry_gem_offset_east.grid(row=3, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="GEM Offset North (m):").grid(
+            row=4, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_gem_offset_north = ctk.CTkEntry(tab)
+        self.entry_gem_offset_north.insert(0, str(mount.get("gem_offset_north", 0.0)))
+        self.entry_gem_offset_north.grid(row=4, column=1, sticky="ew", padx=8, pady=6)
+
+    def _build_control_tab(self):
+        """Control tab: drift correction, thresholds, speeds."""
+        tab = self.tabview.add("Control")
+        tab.grid_columnconfigure(1, weight=1)
+
+        ctrl = self.config.get("control", {})
+
+        self.var_drift_enabled = ctk.StringVar(
+            value="on" if ctrl.get("drift_correction_enabled", True) else "off"
+        )
+        self.switch_drift = ctk.CTkSwitch(
+            tab, text="Drift Correction Enabled",
+            variable=self.var_drift_enabled,
+            onvalue="on", offvalue="off",
+        )
+        self.switch_drift.grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=8, pady=6
+        )
+
+        ctk.CTkLabel(tab, text="Correction Threshold (°):").grid(
+            row=1, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_correction_threshold = ctk.CTkEntry(tab)
+        self.entry_correction_threshold.insert(
+            0, str(ctrl.get("correction_threshold", 0.5))
+        )
+        self.entry_correction_threshold.grid(
+            row=1, column=1, sticky="ew", padx=8, pady=6
+        )
+
+        ctk.CTkLabel(tab, text="Max Speed:").grid(
+            row=2, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_max_speed = ctk.CTkEntry(tab)
+        self.entry_max_speed.insert(0, str(ctrl.get("max_speed", 100)))
+        self.entry_max_speed.grid(row=2, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="Update Rate (Hz):").grid(
+            row=3, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_update_rate = ctk.CTkEntry(tab)
+        self.entry_update_rate.insert(0, str(ctrl.get("update_rate", 10)))
+        self.entry_update_rate.grid(row=3, column=1, sticky="ew", padx=8, pady=6)
+
+    def _build_safety_tab(self):
+        """Safety tab: collision avoidance settings."""
+        tab = self.tabview.add("Safety")
+        tab.grid_columnconfigure(1, weight=1)
+
+        safety = self.config.get("safety", {})
+
+        self.var_telescope_protrudes = ctk.StringVar(
+            value="on" if safety.get("telescope_protrudes", True) else "off"
+        )
+        self.switch_protrudes = ctk.CTkSwitch(
+            tab, text="Telescope Protrudes",
+            variable=self.var_telescope_protrudes,
+            onvalue="on", offvalue="off",
+        )
+        self.switch_protrudes.grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=8, pady=6
+        )
+
+        ctk.CTkLabel(tab, text="Safe Altitude (°):").grid(
+            row=1, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_safe_altitude = ctk.CTkEntry(tab)
+        self.entry_safe_altitude.insert(
+            0, str(safety.get("safe_altitude", 90.0))
+        )
+        self.entry_safe_altitude.grid(row=1, column=1, sticky="ew", padx=8, pady=6)
+
+        ctk.CTkLabel(tab, text="Max Nudge (°):").grid(
+            row=2, column=0, sticky="w", padx=8, pady=6
+        )
+        self.entry_max_nudge = ctk.CTkEntry(tab)
+        self.entry_max_nudge.insert(
+            0, str(safety.get("max_nudge_while_protruding", 2.0))
+        )
+        self.entry_max_nudge.grid(row=2, column=1, sticky="ew", padx=8, pady=6)
+
     # ---- Save ----------------------------------------------------------
     def _on_save(self):
         """Read all widget values, convert types, and write config.yaml."""
@@ -177,6 +334,14 @@ class SettingsWindow(ctk.CTkToplevel):
         self.config["vision"]["aruco"]["marker_size"] = self._to_float(
             self.entry_marker_size.get(), 0.05
         )
+        self.config["vision"]["aruco"]["dictionary"] = self.opt_aruco_dict.get()
+        self.config["vision"].setdefault("resolution", {})
+        self.config["vision"]["resolution"]["width"] = self._to_int(
+            self.entry_res_width.get(), 1280
+        )
+        self.config["vision"]["resolution"]["height"] = self._to_int(
+            self.entry_res_height.get(), 720
+        )
 
         # ASCOM
         self.config.setdefault("ascom", {})
@@ -193,6 +358,52 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self.config["math"]["observatory"]["elevation"] = self._to_float(
             self.entry_elevation.get(), 0.0
+        )
+
+        # Geometry
+        self.config["math"].setdefault("dome", {})
+        self.config["math"]["dome"]["radius"] = self._to_float(
+            self.entry_dome_radius.get(), 2.5
+        )
+        self.config["math"]["dome"]["slit_width"] = self._to_float(
+            self.entry_slit_width.get(), 0.8
+        )
+        self.config["math"].setdefault("mount", {})
+        self.config["math"]["mount"]["pier_height"] = self._to_float(
+            self.entry_pier_height.get(), 1.5
+        )
+        self.config["math"]["mount"]["gem_offset_east"] = self._to_float(
+            self.entry_gem_offset_east.get(), 0.0
+        )
+        self.config["math"]["mount"]["gem_offset_north"] = self._to_float(
+            self.entry_gem_offset_north.get(), 0.0
+        )
+
+        # Control
+        self.config.setdefault("control", {})
+        self.config["control"]["drift_correction_enabled"] = (
+            self.var_drift_enabled.get() == "on"
+        )
+        self.config["control"]["correction_threshold"] = self._to_float(
+            self.entry_correction_threshold.get(), 0.5
+        )
+        self.config["control"]["max_speed"] = self._to_int(
+            self.entry_max_speed.get(), 100
+        )
+        self.config["control"]["update_rate"] = self._to_int(
+            self.entry_update_rate.get(), 10
+        )
+
+        # Safety
+        self.config.setdefault("safety", {})
+        self.config["safety"]["telescope_protrudes"] = (
+            self.var_telescope_protrudes.get() == "on"
+        )
+        self.config["safety"]["safe_altitude"] = self._to_float(
+            self.entry_safe_altitude.get(), 90.0
+        )
+        self.config["safety"]["max_nudge_while_protruding"] = self._to_float(
+            self.entry_max_nudge.get(), 2.0
         )
 
         # Write back
