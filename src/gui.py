@@ -5,27 +5,18 @@ GUI Module
 Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
 Proprietary and confidential. See LICENSE for details.
 
-Professional dark-mode interface built with customtkinter for
+Professional dark-mode Sci-Fi / SpaceX interface built with Flet for
 observatory dome control and monitoring.
 """
 
 import datetime
 import logging
 import math
-from pathlib import Path
-from tkinter import Canvas
-import tkinter as tk
 
-import customtkinter as ctk
-
-from settings_gui import SettingsWindow
-from path_utils import get_base_path
+import flet as ft
+import flet.canvas as cv
 
 logger = logging.getLogger(__name__)
-
-# Path to the red-night theme JSON shipped with the project
-_THEME_DIR = get_base_path() / "assets" / "themes"
-RED_NIGHT_THEME = str(_THEME_DIR / "red_night.json")
 
 # ---------------------------------------------------------------------------
 # Font Constants
@@ -42,137 +33,260 @@ FONT_LOG = ("Roboto Mono", 10)
 # ---------------------------------------------------------------------------
 # Colour Constants
 # ---------------------------------------------------------------------------
-COLOR_ERROR = "#FF8C00"       # Orange for error readout
-COLOR_STOP_BTN = "#C0392B"    # Red for STOP button
+COLOR_BG = "#0B0B0B"            # Page background
+COLOR_ERROR = "#FF8C00"          # Orange for error readout
+COLOR_STOP_BTN = "#C0392B"      # Red for STOP button
 COLOR_STOP_HOVER = "#E74C3C"
-COLOR_OFF = "#555555"         # Grey – indicator off
-COLOR_ON = "#2ECC71"          # Green – indicator on
-COLOR_MOVING = "#F1C40F"      # Yellow – motor moving
-COLOR_NO_SIGNAL = "#888888"   # Grey text for "NO SIGNAL"
-COLOR_CARD_BG = "#2B2B2B"    # Card background (lighter than window)
-CARD_CORNER_RADIUS = 12       # Rounded corners for card frames
+COLOR_OFF = "#555555"            # Grey – indicator off
+COLOR_ON = "#2ECC71"            # Green – indicator on
+COLOR_MOVING = "#F1C40F"        # Yellow – motor moving
+COLOR_NO_SIGNAL = "#888888"      # Grey text for "NO SIGNAL"
+COLOR_CARD_BG = "#161616"       # Card background (Material Design 3)
+COLOR_ACCENT = ft.Colors.CYAN   # Accent colour
+CARD_CORNER_RADIUS = 16         # Rounded corners for card containers
+
+# Radar constants
+_RADAR_SIZE = 180
+_RADAR_CX = _RADAR_SIZE / 2
+_RADAR_CY = _RADAR_SIZE / 2
+_RADAR_R = 70
 
 
-class ArgusApp(ctk.CTk):
-    """Main ARGUS GUI application."""
+def _card(content: ft.Control, **kwargs) -> ft.Container:
+    """Wrap *content* in a Material Design 3 card container."""
+    return ft.Container(
+        content=content,
+        bgcolor=COLOR_CARD_BG,
+        border_radius=CARD_CORNER_RADIUS,
+        padding=12,
+        **kwargs,
+    )
 
-    def __init__(self):
-        super().__init__()
 
-        # -- Window setup ------------------------------------------------
-        self.title("ARGUS – Dome Control")
-        self.geometry("1280x720")
-        self.minsize(960, 540)
+class ArgusGUI:
+    """Main ARGUS GUI built with Flet.
 
-        # -- Grid configuration ------------------------------------------
-        self.grid_columnconfigure(0, weight=3)   # Video column
-        self.grid_columnconfigure(1, weight=1)   # Controls column
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=0)       # Log terminal row
+    Args:
+        page: The Flet ``Page`` object provided by ``ft.app(target=...)``.
+    """
 
-        # -- Build panels ------------------------------------------------
-        self.create_video_panel()
-        self.create_dashboard_panel()
-        self._create_log_terminal()
+    def __init__(self, page: ft.Page):
+        self.page = page
+
+        # -- Text elements for thread-safe updates -----------------------
+        self.lbl_mount_az = ft.Text(
+            "---.-°", size=40, font_family="RobotoMono",
+            color=COLOR_ACCENT, weight=ft.FontWeight.BOLD,
+        )
+        self.lbl_dome_az = ft.Text(
+            "---.-°", size=40, font_family="RobotoMono",
+            color=COLOR_ACCENT, weight=ft.FontWeight.BOLD,
+        )
+        self.lbl_error = ft.Text(
+            "---.-°", size=40, font_family="RobotoMono",
+            color=COLOR_ERROR, weight=ft.FontWeight.BOLD,
+        )
+
+        # Status indicator badges
+        self.ind_ascom = ft.Container(width=40, height=18, bgcolor=COLOR_OFF,
+                                       border_radius=6)
+        self.ind_vision = ft.Container(width=40, height=18, bgcolor=COLOR_OFF,
+                                        border_radius=6)
+        self.ind_motor = ft.Container(width=40, height=18, bgcolor=COLOR_OFF,
+                                       border_radius=6)
+
+        # Radar canvas
+        self.radar_canvas = cv.Canvas(
+            width=_RADAR_SIZE, height=_RADAR_SIZE,
+            shapes=self._radar_shapes(0.0, 0.0),
+        )
+
+        # Log list
+        self.log_list = ft.ListView(
+            height=120, spacing=2, auto_scroll=True,
+        )
+
+        # Control buttons (callbacks set later by the controller)
+        self.btn_ccw = ft.IconButton(
+            icon=ft.Icons.ARROW_BACK, tooltip="CCW",
+            icon_size=32,
+        )
+        self.btn_stop = ft.IconButton(
+            icon=ft.Icons.STOP_CIRCLE, tooltip="STOP",
+            icon_color="red", icon_size=40,
+        )
+        self.btn_cw = ft.IconButton(
+            icon=ft.Icons.ARROW_FORWARD, tooltip="CW",
+            icon_size=32,
+        )
+
+        # Mode selector
+        self.mode_selector = ft.SegmentedButton(
+            segments=[
+                ft.Segment(value="MANUAL", label=ft.Text("MANUAL")),
+                ft.Segment(value="AUTO-SLAVE", label=ft.Text("AUTO-SLAVE")),
+                ft.Segment(value="CALIBRATE", label=ft.Text("CALIBRATE")),
+            ],
+            selected={"MANUAL"},
+            allow_multiple_selection=False,
+        )
+
+        # Settings button
+        self.btn_settings = ft.IconButton(
+            icon=ft.Icons.SETTINGS, tooltip="Settings",
+            icon_size=28,
+        )
+
+        # -- Build layout ------------------------------------------------
+        self._build_layout()
 
     # ===================================================================
-    # LEFT PANEL – Video Feed
+    # Layout
     # ===================================================================
-    def create_video_panel(self):
-        """Create the left video-feed panel."""
-        self.video_frame = ctk.CTkFrame(self)
-        self.video_frame.grid(row=0, column=0, sticky="nsew", padx=(10, 5), pady=10)
-        self.video_frame.grid_rowconfigure(0, weight=1)
-        self.video_frame.grid_columnconfigure(0, weight=1)
+    def _build_layout(self):
+        """Assemble the full dashboard layout on the page."""
 
-        self.video_label = ctk.CTkLabel(
-            self.video_frame,
-            text="NO SIGNAL",
-            font=FONT_DATA,
-            text_color=COLOR_NO_SIGNAL,
+        # --- Video feed placeholder ---
+        video_card = _card(
+            ft.Container(
+                content=ft.Text(
+                    "NO SIGNAL", size=24,
+                    font_family="RobotoMono",
+                    color=COLOR_NO_SIGNAL,
+                    text_align=ft.TextAlign.CENTER,
+                ),
+                alignment=ft.alignment.center,
+                expand=True,
+                border=ft.border.all(1, "#333333"),
+            ),
+            expand=True,
         )
-        self.video_label.grid(row=0, column=0, sticky="nsew")
+
+        # --- Telemetry card ---
+        telemetry_card = _card(ft.Column([
+            ft.Text("TELEMETRY", weight=ft.FontWeight.BOLD, size=13),
+            ft.Row([ft.Text("MOUNT AZ", size=12), self.lbl_mount_az],
+                   alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Row([ft.Text("DOME AZ", size=12), self.lbl_dome_az],
+                   alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Row([ft.Text("ERROR", size=12), self.lbl_error],
+                   alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+        ], spacing=4))
+
+        # --- Radar card ---
+        radar_card = _card(ft.Column([
+            ft.Text("RADAR", weight=ft.FontWeight.BOLD, size=13),
+            ft.Container(
+                content=self.radar_canvas,
+                alignment=ft.alignment.center,
+            ),
+        ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
+
+        # --- Status card ---
+        def _indicator_col(label: str, badge: ft.Container) -> ft.Column:
+            return ft.Column([
+                ft.Text(label, size=11, text_align=ft.TextAlign.CENTER),
+                badge,
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2)
+
+        status_card = _card(ft.Column([
+            ft.Text("STATUS", weight=ft.FontWeight.BOLD, size=13),
+            ft.Row([
+                _indicator_col("ASCOM", self.ind_ascom),
+                _indicator_col("VISION", self.ind_vision),
+                _indicator_col("MOTOR", self.ind_motor),
+            ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
+        ], spacing=4))
+
+        # --- Controls card ---
+        controls_card = _card(ft.Column([
+            ft.Text("MANUAL CONTROL", weight=ft.FontWeight.BOLD, size=13),
+            ft.Row([
+                self.btn_ccw, self.btn_stop, self.btn_cw,
+            ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
+        ], spacing=4))
+
+        # --- Mode card ---
+        mode_card = _card(ft.Column([
+            ft.Text("MODE", weight=ft.FontWeight.BOLD, size=13),
+            self.mode_selector,
+        ], spacing=4))
+
+        # --- Settings card ---
+        settings_card = _card(ft.Row([
+            ft.Text("SETTINGS", weight=ft.FontWeight.BOLD, size=13),
+            self.btn_settings,
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
+
+        # --- Log card ---
+        log_card = _card(ft.Column([
+            ft.Text("SYSTEM LOG", weight=ft.FontWeight.BOLD, size=13),
+            self.log_list,
+        ], spacing=4), expand=True)
+
+        # --- Dashboard (right column) ---
+        dashboard = ft.Column([
+            telemetry_card,
+            radar_card,
+            status_card,
+            controls_card,
+            mode_card,
+            settings_card,
+        ], scroll=ft.ScrollMode.AUTO, expand=True, spacing=8)
+
+        # --- Main layout ---
+        main_row = ft.Row([
+            ft.Container(content=video_card, expand=3),
+            ft.Container(content=dashboard, expand=1),
+        ], expand=True, spacing=8)
+
+        self.page.add(
+            ft.Column([
+                ft.Container(content=main_row, expand=True),
+                log_card,
+            ], expand=True, spacing=8),
+        )
 
     # ===================================================================
-    # RIGHT PANEL – Dashboard
+    # Radar drawing helpers
     # ===================================================================
-    def create_dashboard_panel(self):
-        """Create the right dashboard panel with all control sections."""
-        self.dashboard_frame = ctk.CTkFrame(self)
-        self.dashboard_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=10)
-        self.dashboard_frame.grid_columnconfigure(0, weight=1)
+    @staticmethod
+    def _radar_shapes(mount_az: float, dome_az: float) -> list:
+        """Return a list of canvas shapes for the radar view."""
+        cx, cy, r = _RADAR_CX, _RADAR_CY, _RADAR_R
+        shapes: list = []
 
-        # Distribute vertical space among sections
-        for i in range(6):
-            self.dashboard_frame.grid_rowconfigure(i, weight=1)
+        # 1. Observatory circle
+        shapes.append(cv.Circle(
+            cx, cy, r,
+            paint=ft.Paint(color="#555555", stroke_width=2,
+                           style=ft.PaintingStyle.STROKE),
+        ))
 
-        self._create_telemetry_section()
-        self._create_radar_section()
-        self._create_status_section()
-        self._create_controls_section()
-        self._create_mode_section()
-        self._create_settings_section()
+        # 2. Red line for mount azimuth (telescope)
+        angle_rad = math.radians(mount_az - 90)
+        arrow_len = r - 6
+        ax = cx + arrow_len * math.cos(angle_rad)
+        ay = cy + arrow_len * math.sin(angle_rad)
+        shapes.append(cv.Line(
+            cx, cy, ax, ay,
+            paint=ft.Paint(color="#FF0000", stroke_width=3,
+                           style=ft.PaintingStyle.STROKE),
+        ))
 
-    # -- A. Telemetry ---------------------------------------------------
-    def _create_telemetry_section(self):
-        """Section A – large monospace readouts for azimuth data."""
-        frame = ctk.CTkFrame(
-            self.dashboard_frame, fg_color=COLOR_CARD_BG,
-            corner_radius=CARD_CORNER_RADIUS, border_width=0,
-        )
-        frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=(8, 4))
-        frame.grid_columnconfigure(1, weight=1)
+        # 3. Yellow arc for dome slit (~20° wide)
+        arc_half_deg = 10
+        start_deg = dome_az - 90 - arc_half_deg
+        sweep_deg = 2 * arc_half_deg
+        shapes.append(cv.Arc(
+            cx - r, cy - r, 2 * r, 2 * r,
+            start_angle=math.radians(start_deg),
+            sweep_angle=math.radians(sweep_deg),
+            paint=ft.Paint(color="#F1C40F", stroke_width=4,
+                           style=ft.PaintingStyle.STROKE),
+        ))
 
-        ctk.CTkLabel(frame, text="TELEMETRY", font=FONT_SECTION).grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4)
-        )
-
-        # MOUNT AZ
-        ctk.CTkLabel(frame, text="MOUNT AZ", font=FONT_LABEL).grid(
-            row=1, column=0, sticky="w", padx=8, pady=2
-        )
-        self.lbl_mount_az = ctk.CTkLabel(frame, text="---.-°", font=FONT_DATA)
-        self.lbl_mount_az.grid(row=1, column=1, sticky="e", padx=8, pady=2)
-
-        # DOME AZ
-        ctk.CTkLabel(frame, text="DOME AZ", font=FONT_LABEL).grid(
-            row=2, column=0, sticky="w", padx=8, pady=2
-        )
-        self.lbl_dome_az = ctk.CTkLabel(frame, text="---.-°", font=FONT_DATA)
-        self.lbl_dome_az.grid(row=2, column=1, sticky="e", padx=8, pady=2)
-
-        # ERROR
-        ctk.CTkLabel(frame, text="ERROR", font=FONT_LABEL).grid(
-            row=3, column=0, sticky="w", padx=8, pady=(2, 8)
-        )
-        self.lbl_error = ctk.CTkLabel(
-            frame, text="---.-°", font=FONT_DATA, text_color=COLOR_ERROR
-        )
-        self.lbl_error.grid(row=3, column=1, sticky="e", padx=8, pady=(2, 8))
-
-    # -- B. Radar -----------------------------------------------------------
-    def _create_radar_section(self):
-        """Section B – top-down radar view of dome and mount."""
-        frame = ctk.CTkFrame(
-            self.dashboard_frame, fg_color=COLOR_CARD_BG,
-            corner_radius=CARD_CORNER_RADIUS, border_width=0,
-        )
-        frame.grid(row=1, column=0, sticky="nsew", padx=8, pady=4)
-        frame.grid_columnconfigure(0, weight=1)
-        frame.grid_rowconfigure(1, weight=1)
-
-        ctk.CTkLabel(frame, text="RADAR", font=FONT_SECTION).grid(
-            row=0, column=0, sticky="w", padx=8, pady=(8, 4)
-        )
-
-        self.radar_canvas = Canvas(
-            frame, width=180, height=180,
-            bg="#000000", highlightthickness=0,
-        )
-        self.radar_canvas.grid(row=1, column=0, padx=8, pady=(2, 8))
-
-        # Draw initial idle state
-        self.draw_radar(0.0, 0.0)
+        return shapes
 
     def draw_radar(self, mount_az: float, dome_az: float) -> None:
         """Redraw the radar view showing mount and dome positions.
@@ -181,280 +295,90 @@ class ArgusApp(ctk.CTk):
             mount_az: Current mount azimuth in degrees.
             dome_az:  Current dome slit azimuth in degrees.
         """
-        c = self.radar_canvas
-        c.delete("all")
-
-        cx, cy = 90, 90  # centre of the canvas
-        r = 70            # observatory circle radius
-
-        # 1. Observatory circle
-        c.create_oval(
-            cx - r, cy - r, cx + r, cy + r,
-            outline="#555555", width=2,
-        )
-
-        # 2. Red arrow for mount azimuth (telescope)
-        # Tk canvas angles: 0° = East, so subtract 90° to map azimuth 0° → North (up)
-        angle_rad = math.radians(mount_az - 90)
-        arrow_len = r - 6
-        ax = cx + arrow_len * math.cos(angle_rad)
-        ay = cy + arrow_len * math.sin(angle_rad)
-        c.create_line(cx, cy, ax, ay, fill="#FF0000", width=3, arrow="last")
-
-        # 3. Yellow arc for dome slit (~20° wide)
-        arc_half = 10  # half-width in degrees
-        start_angle = 90 - dome_az - arc_half  # Tk arcs: 0° = East, CCW
-        c.create_arc(
-            cx - r, cy - r, cx + r, cy + r,
-            start=start_angle, extent=2 * arc_half,
-            outline="#F1C40F", width=4, style="arc",
-        )
-
-    # -- C. Status Monitor ----------------------------------------------
-    def _create_status_section(self):
-        """Section C – small coloured status indicators."""
-        frame = ctk.CTkFrame(
-            self.dashboard_frame, fg_color=COLOR_CARD_BG,
-            corner_radius=CARD_CORNER_RADIUS, border_width=0,
-        )
-        frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=4)
-        frame.grid_columnconfigure((0, 1, 2), weight=1)
-
-        ctk.CTkLabel(frame, text="STATUS", font=FONT_SECTION).grid(
-            row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(8, 4)
-        )
-
-        # Helper to build an indicator pair (label + coloured badge)
-        def _indicator(parent, text, row, col):
-            container = ctk.CTkFrame(parent, fg_color="transparent")
-            container.grid(row=row, column=col, padx=6, pady=(2, 8))
-            lbl = ctk.CTkLabel(container, text=text, font=FONT_INDICATOR)
-            lbl.pack()
-            badge = ctk.CTkLabel(
-                container, text="  ", width=40, height=18,
-                corner_radius=6, fg_color=COLOR_OFF,
-            )
-            badge.pack(pady=(2, 0))
-            return badge
-
-        self.ind_ascom = _indicator(frame, "ASCOM", 1, 0)
-        self.ind_vision = _indicator(frame, "VISION", 1, 1)
-        self.ind_motor = _indicator(frame, "MOTOR", 1, 2)
-
-    # -- D. Manual Controls ---------------------------------------------
-    def _create_controls_section(self):
-        """Section D – CCW / STOP / CW buttons."""
-        frame = ctk.CTkFrame(
-            self.dashboard_frame, fg_color=COLOR_CARD_BG,
-            corner_radius=CARD_CORNER_RADIUS, border_width=0,
-        )
-        frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=4)
-        frame.grid_columnconfigure((0, 1, 2), weight=1)
-
-        ctk.CTkLabel(frame, text="MANUAL CONTROL", font=FONT_SECTION).grid(
-            row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(8, 4)
-        )
-
-        self.btn_ccw = ctk.CTkButton(
-            frame, text="◀ CCW", font=FONT_BUTTON, height=40,
-            command=self.on_btn_left_pressed,
-        )
-        self.btn_ccw.grid(row=1, column=0, sticky="ew", padx=6, pady=(2, 8))
-
-        self.btn_stop = ctk.CTkButton(
-            frame, text="STOP", font=FONT_BUTTON, height=40,
-            fg_color=COLOR_STOP_BTN, hover_color=COLOR_STOP_HOVER,
-            command=self.on_btn_stop_pressed,
-        )
-        self.btn_stop.grid(row=1, column=1, sticky="ew", padx=6, pady=(2, 8))
-
-        self.btn_cw = ctk.CTkButton(
-            frame, text="CW ▶", font=FONT_BUTTON, height=40,
-            command=self.on_btn_right_pressed,
-        )
-        self.btn_cw.grid(row=1, column=2, sticky="ew", padx=6, pady=(2, 8))
-
-    # -- E. Mode Selector ------------------------------------------------
-    def _create_mode_section(self):
-        """Section E – mode selector segmented button."""
-        frame = ctk.CTkFrame(
-            self.dashboard_frame, fg_color=COLOR_CARD_BG,
-            corner_radius=CARD_CORNER_RADIUS, border_width=0,
-        )
-        frame.grid(row=4, column=0, sticky="nsew", padx=8, pady=4)
-        frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(frame, text="MODE", font=FONT_SECTION).grid(
-            row=0, column=0, sticky="w", padx=8, pady=(8, 4)
-        )
-
-        self.mode_selector = ctk.CTkSegmentedButton(
-            frame,
-            values=["MANUAL", "AUTO-SLAVE", "CALIBRATE"],
-            font=FONT_BUTTON,
-            command=self.on_mode_changed,
-        )
-        self.mode_selector.set("MANUAL")
-        self.mode_selector.grid(row=1, column=0, sticky="ew", padx=8, pady=(2, 8))
-
-    # -- F. Settings (Night Mode + Settings Window) -----------------------
-    def _create_settings_section(self):
-        """Section F – settings with Night Mode toggle and settings button."""
-        frame = ctk.CTkFrame(
-            self.dashboard_frame, fg_color=COLOR_CARD_BG,
-            corner_radius=CARD_CORNER_RADIUS, border_width=0,
-        )
-        frame.grid(row=5, column=0, sticky="nsew", padx=8, pady=(4, 8))
-        frame.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(frame, text="SETTINGS", font=FONT_SECTION).grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4)
-        )
-
-        self.night_mode_var = ctk.StringVar(value="off")
-        self.night_mode_switch = ctk.CTkSwitch(
-            frame,
-            text="Night Mode",
-            font=FONT_INDICATOR,
-            variable=self.night_mode_var,
-            onvalue="on",
-            offvalue="off",
-            command=self.on_night_mode_toggled,
-        )
-        self.night_mode_switch.grid(row=1, column=0, sticky="w", padx=8, pady=(2, 8))
-
-        self._settings_window = None
-        self.btn_settings = ctk.CTkButton(
-            frame,
-            text="⚙ SETTINGS",
-            font=FONT_BUTTON,
-            width=100,
-            height=40,
-            command=self.open_settings,
-        )
-        self.btn_settings.grid(row=1, column=1, sticky="e", padx=8, pady=(2, 8))
-
-    # ===================================================================
-    # G. System Log Terminal
-    # ===================================================================
-    def _create_log_terminal(self):
-        """Create a read-only log terminal at the bottom of the window."""
-        log_frame = ctk.CTkFrame(
-            self, fg_color=COLOR_CARD_BG,
-            corner_radius=CARD_CORNER_RADIUS, border_width=0,
-        )
-        log_frame.grid(
-            row=1, column=0, columnspan=2,
-            sticky="nsew", padx=10, pady=(0, 10),
-        )
-        log_frame.grid_columnconfigure(0, weight=1)
-        log_frame.grid_rowconfigure(1, weight=1)
-
-        ctk.CTkLabel(log_frame, text="SYSTEM LOG", font=FONT_SECTION).grid(
-            row=0, column=0, sticky="w", padx=8, pady=(6, 2)
-        )
-
-        self.log_text = tk.Text(
-            log_frame, height=6, wrap="word",
-            bg="#1A1A1A", fg="#CCCCCC",
-            font=FONT_LOG,
-            insertbackground="#CCCCCC",
-            selectbackground="#555555",
-            relief="flat", borderwidth=0,
-            state="disabled",
-        )
-        self.log_text.grid(row=1, column=0, sticky="nsew", padx=8, pady=(2, 8))
-
-    def append_log(self, message: str) -> None:
-        """Append a timestamped message to the log terminal.
-
-        This method is safe to call from any thread via ``app.after()``.
-
-        Args:
-            message: The log text to display.
-        """
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        line = f"[{timestamp}] {message}\n"
-        self.log_text.configure(state="normal")
-        self.log_text.insert("end", line)
-        self.log_text.see("end")
-        self.log_text.configure(state="disabled")
+        self.radar_canvas.shapes = self._radar_shapes(mount_az, dome_az)
 
     # ===================================================================
     # Public API
     # ===================================================================
     def update_telemetry(self, mount_az: float, dome_az: float) -> None:
-        """
-        Update the telemetry readouts on the dashboard.
+        """Update the telemetry readouts on the dashboard.
+
+        Thread-safe: calls ``page.update()`` after modifying text values.
 
         Args:
             mount_az: Current mount azimuth in degrees.
             dome_az:  Current dome azimuth in degrees.
         """
         error = mount_az - dome_az
-        self.lbl_mount_az.configure(text=f"{mount_az:06.1f}°")
-        self.lbl_dome_az.configure(text=f"{dome_az:06.1f}°")
-        self.lbl_error.configure(text=f"{error:+06.1f}°")
+        self.lbl_mount_az.value = f"{mount_az:06.1f}°"
+        self.lbl_dome_az.value = f"{dome_az:06.1f}°"
+        self.lbl_error.value = f"{error:+06.1f}°"
         self.draw_radar(mount_az, dome_az)
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
-    def set_indicator(self, name: str, active: bool) -> None:
-        """
-        Set the colour of a status indicator.
+    def write_log(self, message: str) -> None:
+        """Append a timestamped message to the log console.
+
+        Thread-safe: calls ``page.update()`` after adding the line.
 
         Args:
-            name:   One of "ascom", "vision", "motor".
-            active: ``True`` to turn the indicator on.
+            message: The log text to display.
+        """
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        line = f"[{timestamp}] {message}"
+        entry = ft.Text(line, size=10, font_family="RobotoMono",
+                        color="#CCCCCC")
+        self.log_list.controls.append(entry)
+        # Keep at most 200 lines
+        if len(self.log_list.controls) > 200:
+            self.log_list.controls.pop(0)
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    # Backward-compatible alias
+    append_log = write_log
+
+    def set_status(self, component: str, is_ok: bool) -> None:
+        """Set the colour of a status indicator.
+
+        Args:
+            component: One of ``"ascom"``, ``"vision"``, ``"motor"``.
+            is_ok:     ``True`` to turn the indicator on.
         """
         mapping = {
             "ascom": (self.ind_ascom, COLOR_ON),
             "vision": (self.ind_vision, COLOR_ON),
             "motor": (self.ind_motor, COLOR_MOVING),
         }
-        if name not in mapping:
+        if component not in mapping:
             return
-        badge, on_colour = mapping[name]
-        badge.configure(fg_color=on_colour if active else COLOR_OFF)
+        badge, on_colour = mapping[component]
+        badge.bgcolor = on_colour if is_ok else COLOR_OFF
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
-    # ===================================================================
-    # Button / Event Callbacks (Dummies)
-    # ===================================================================
-    def on_btn_left_pressed(self):
-        """Dummy handler – rotate counter-clockwise."""
-        logger.debug("Manual control: CCW")
-
-    def on_btn_stop_pressed(self):
-        """Dummy handler – emergency stop."""
-        logger.debug("Manual control: STOP")
-
-    def on_btn_right_pressed(self):
-        """Dummy handler – rotate clockwise."""
-        logger.debug("Manual control: CW")
-
-    def on_mode_changed(self, value: str):
-        """Dummy handler – mode selection changed."""
-        logger.info("Mode changed to %s", value)
-
-    def on_night_mode_toggled(self):
-        """Toggle between 'red_night' and 'dark-blue' colour themes."""
-        if self.night_mode_var.get() == "on":
-            ctk.set_default_color_theme(RED_NIGHT_THEME)
-        else:
-            ctk.set_default_color_theme("dark-blue")
-
-    def open_settings(self):
-        """Open the settings window (singleton – only one at a time)."""
-        if self._settings_window is not None and self._settings_window.winfo_exists():
-            self._settings_window.focus()
-            return
-        self._settings_window = SettingsWindow(self)
+    # Backward-compatible alias used by ArgusController
+    set_indicator = set_status
 
 
 # -----------------------------------------------------------------------
-# Direct execution
+# Direct execution (standalone preview)
 # -----------------------------------------------------------------------
+def _standalone_main(page: ft.Page):
+    page.title = "ARGUS – Dome Control"
+    page.bgcolor = COLOR_BG
+    page.theme_mode = ft.ThemeMode.DARK
+    page.window.width = 1280
+    page.window.height = 720
+    ArgusGUI(page)
+
+
 if __name__ == "__main__":
-    ctk.set_appearance_mode("Dark")
-    ctk.set_default_color_theme("dark-blue")
-
-    app = ArgusApp()
-    app.mainloop()
+    ft.app(target=_standalone_main)

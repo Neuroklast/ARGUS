@@ -20,9 +20,10 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-import customtkinter as ctk
+import flet as ft
 
-from gui import ArgusApp
+from gui import ArgusGUI, COLOR_BG
+from settings_gui import show_settings_dialog
 from simulation_sensor import SimulationSensor
 
 # Hardware imports with graceful fallback --------------------------------
@@ -79,18 +80,19 @@ DEFAULT_CONFIG_PATH = get_base_path() / "config.yaml"
 class GuiLogHandler(logging.Handler):
     """Custom logging handler that forwards messages to the GUI log terminal.
 
-    Uses ``app.after()`` to ensure thread-safe GUI updates, since log
-    messages may originate from background threads (camera, motor, etc.).
+    Calls the GUI's ``write_log()`` method directly. Since Flet handles
+    thread-safe updates via ``page.update()`` inside ``write_log()``,
+    no ``app.after()`` scheduling is needed.
     """
 
-    def __init__(self, app):
+    def __init__(self, gui):
         super().__init__()
-        self._app = app
+        self._gui = gui
 
     def emit(self, record):
         try:
             msg = self.format(record)
-            self._app.after(0, self._app.append_log, msg)
+            self._gui.write_log(msg)
         except Exception:
             self.handleError(record)
 
@@ -261,7 +263,7 @@ class ArgusController:
     degradation when hardware components are unavailable.
     """
 
-    def __init__(self, config: Optional[dict] = None):
+    def __init__(self, config: Optional[dict] = None, gui: Optional['ArgusGUI'] = None):
         if config is None:
             config = load_config()
         self.config = config
@@ -281,17 +283,17 @@ class ArgusController:
         self._stable_drift_count: int = 0
         self._pending_drift_az: Optional[float] = None
 
-        # -- Appearance (must be set before any widget is created) --------
-        ctk.set_appearance_mode("Dark")
-        ctk.set_default_color_theme("dark-blue")
+        # -- GUI ----------------------------------------------------------
+        self.gui = gui
+        # Backward-compatible alias (used by some tests)
+        self.app = gui
 
-        self.app = ArgusApp()
-
-        # -- Register GUI log handler ------------------------------------
-        gui_handler = GuiLogHandler(self.app)
-        gui_handler.setLevel(logging.INFO)
-        gui_handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
-        logging.getLogger().addHandler(gui_handler)
+        if gui is not None:
+            # -- Register GUI log handler --------------------------------
+            gui_handler = GuiLogHandler(gui)
+            gui_handler.setLevel(logging.INFO)
+            gui_handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+            logging.getLogger().addHandler(gui_handler)
 
         # Simulation fallback (always available)
         self.sensor = SimulationSensor()
@@ -311,10 +313,16 @@ class ArgusController:
         self._init_voice()
 
         # -- Bind GUI callbacks ------------------------------------------
-        self.app.btn_ccw.configure(command=self.on_move_left)
-        self.app.btn_stop.configure(command=self.on_stop)
-        self.app.btn_cw.configure(command=self.on_move_right)
-        self.app.mode_selector.configure(command=self.on_mode_changed)
+        if gui is not None:
+            gui.btn_ccw.on_click = lambda e: self.on_move_left()
+            gui.btn_stop.on_click = lambda e: self.on_stop()
+            gui.btn_cw.on_click = lambda e: self.on_move_right()
+            gui.mode_selector.on_change = lambda e: self.on_mode_changed(
+                next(iter(e.control.selected), "MANUAL")
+            )
+            gui.btn_settings.on_click = lambda e: show_settings_dialog(
+                gui.page, self.config, self._on_settings_saved,
+            )
 
         self._update_indicators()
 
@@ -504,20 +512,22 @@ class ArgusController:
 
     def _update_indicators(self):
         """Push current hardware status to the GUI indicator badges."""
+        if self.gui is None:
+            return
         try:
-            self.app.set_indicator(
+            self.gui.set_indicator(
                 "ascom",
                 self.ascom is not None and self.ascom.connected,
             )
-            self.app.set_indicator(
+            self.gui.set_indicator(
                 "vision",
                 self.vision is not None and self.vision.camera_open,
             )
-            self.app.set_indicator(
+            self.gui.set_indicator(
                 "motor",
                 self.serial is not None and self.serial.connected,
             )
-        except RuntimeError:
+        except Exception:
             pass
 
     # ---- Health checks --------------------------------------------------
@@ -745,13 +755,12 @@ class ArgusController:
             self._last_vision_ok = vision_ok
 
             # Push telemetry to GUI
-            try:
-                self.app.after(
-                    0, self.app.update_telemetry, mount_az, dome_az
-                )
-                self.app.after(0, self._update_indicators)
-            except RuntimeError:
-                pass
+            if self.gui is not None:
+                try:
+                    self.gui.update_telemetry(mount_az, dome_az)
+                    self._update_indicators()
+                except Exception:
+                    pass
 
             time.sleep(interval)
 
@@ -895,12 +904,9 @@ class ArgusController:
 
         try:
             # Update GUI status if available
-            if self.app:
+            if self.gui is not None:
                 try:
-                    self.app.after(
-                        0,
-                        lambda: self.app.update_status("REPLAY: [Orion Nebula]"),
-                    )
+                    self.gui.write_log("REPLAY: [Orion Nebula]")
                 except Exception:
                     pass
 
@@ -949,17 +955,29 @@ class ArgusController:
                 pass
 
 
-def main():
-    """Main entry point with global exception handler."""
+    # ---- Settings callback ------------------------------------------------
+    def _on_settings_saved(self, new_config: dict) -> None:
+        """Handle updated config from the settings dialog."""
+        self.config = new_config
+        logger.info("Configuration updated from settings dialog")
+
+
+def main(page: ft.Page):
+    """Flet main entry point – configures the page and starts the controller."""
+    page.title = "ARGUS – Dome Control"
+    page.bgcolor = COLOR_BG
+    page.theme_mode = ft.ThemeMode.DARK
+    page.window.width = 1280
+    page.window.height = 720
+
+    gui = ArgusGUI(page)
+
     try:
-        config = load_config()
-        controller = ArgusController(config)
-        controller.app.mainloop()
-        controller.shutdown()
+        controller = ArgusController(config=load_config(), gui=gui)
     except Exception:
         logger.critical("Unhandled exception – shutting down", exc_info=True)
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    ft.app(target=main)

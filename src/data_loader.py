@@ -56,47 +56,70 @@ def _parse_pier_side(value: str) -> int | None:
 
 
 def load_calibration_data(filepath: str | Path) -> List[Dict]:
-    """Load a semicolon-delimited calibration CSV file.
+    """Load a calibration CSV file.
 
-    Lines starting with ``#`` are treated as comments/header and skipped.
-    Empty lines are also skipped.
+    Supports two formats:
+
+    1. **Semicolon-delimited** (legacy) with columns
+       ``ISO_TIMESTAMP;LST;RA_MOUNT;DEC_MOUNT;HA_MOUNT;AZ_DEG;ALT_DEG;PIER_SIDE;STATUS``
+       Lines starting with ``#`` are treated as comments.
+
+    2. **Comma-delimited** with a header row containing
+       ``Timestamp_UTC_Local,Timestamp_Unix,Status,PierSide,
+       HA_Current_Hour,Dec_Current_Deg,Relative_Time_Sec,ErrorCode,Msg``
+
+    The format is auto-detected by inspecting the first non-empty line.
 
     Each returned dictionary contains:
 
-    * ``timestamp`` – :class:`datetime` parsed from ``ISO_TIMESTAMP``
-    * ``ra`` – float hours  (parsed from ``RA_MOUNT``)
-    * ``dec`` – float degrees (parsed from ``DEC_MOUNT``)
-    * ``az`` – float degrees  (from ``AZ_DEG``)
-    * ``alt`` – float degrees (from ``ALT_DEG``)
+    * ``timestamp`` – :class:`datetime`
+    * ``ha`` – float hours  (Hour Angle)
+    * ``dec`` – float degrees
     * ``pier_side`` – int (0/1) or ``None``
     * ``status`` – original status string
+
+    Legacy format additionally provides ``ra``, ``az``, and ``alt``.
     """
     filepath = Path(filepath)
     if not filepath.exists():
         raise FileNotFoundError(f"Calibration file not found: {filepath}")
 
+    # Peek at first line to decide format
+    with open(filepath, "r", encoding="utf-8") as fh:
+        first_line = ""
+        for line in fh:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                first_line = stripped
+                break
+
+    if ";" in first_line and "Timestamp_UTC_Local" not in first_line:
+        return _load_semicolon_format(filepath)
+    return _load_comma_format(filepath)
+
+
+def _load_semicolon_format(filepath: Path) -> List[Dict]:
+    """Load the legacy semicolon-delimited calibration CSV."""
     records: List[Dict] = []
 
     with open(filepath, "r", encoding="utf-8") as fh:
         reader = csv.reader(fh, delimiter=";")
         for row in reader:
-            # Skip empty lines and comment/header lines
             if not row or row[0].strip().startswith("#"):
                 continue
-
-            # Expected columns (see COLUMNS header):
-            # ISO_TIMESTAMP;LST;RA_MOUNT;DEC_MOUNT;HA_MOUNT;AZ_DEG;ALT_DEG;PIER_SIDE;STATUS
             if len(row) < 9:
                 logger.warning("Skipping malformed row: %s", row)
                 continue
 
             try:
+                ha = _parse_hms(row[4])
                 record = {
                     "timestamp": datetime.fromisoformat(row[0].strip()),
-                    "ra": _parse_hms(row[2]),       # RA in decimal hours
-                    "dec": _parse_hms(row[3]),       # Dec in decimal degrees
-                    "az": float(row[5].strip()),     # Azimuth in degrees
-                    "alt": float(row[6].strip()),    # Altitude in degrees
+                    "ra": _parse_hms(row[2]),
+                    "dec": _parse_hms(row[3]),
+                    "ha": ha,
+                    "az": float(row[5].strip()),
+                    "alt": float(row[6].strip()),
                     "pier_side": _parse_pier_side(row[7]),
                     "status": row[8].strip(),
                 }
@@ -105,5 +128,46 @@ def load_calibration_data(filepath: str | Path) -> List[Dict]:
                 logger.warning("Skipping row due to parse error: %s – %s", row, exc)
                 continue
 
-    logger.info("Loaded %d records from %s", len(records), filepath)
+    logger.info("Loaded %d records from %s (semicolon format)", len(records), filepath)
+    return records
+
+
+def _load_comma_format(filepath: Path) -> List[Dict]:
+    """Load the comma-delimited calibration CSV with header row.
+
+    Columns:
+    ``Timestamp_UTC_Local,Timestamp_Unix,Status,PierSide,
+    HA_Current_Hour,Dec_Current_Deg,Relative_Time_Sec,ErrorCode,Msg``
+    """
+    records: List[Dict] = []
+
+    with open(filepath, "r", encoding="utf-8") as fh:
+        reader = csv.reader(fh, delimiter=",")
+        header = None
+        for row in reader:
+            if not row:
+                continue
+            # Skip the header row
+            if header is None:
+                header = [c.strip() for c in row]
+                continue
+
+            if len(row) < 6:
+                logger.warning("Skipping malformed row: %s", row)
+                continue
+
+            try:
+                record = {
+                    "timestamp": datetime.fromisoformat(row[0].strip()),
+                    "ha": float(row[4].strip()),
+                    "dec": float(row[5].strip()),
+                    "pier_side": _parse_pier_side(row[3]),
+                    "status": row[2].strip(),
+                }
+                records.append(record)
+            except (ValueError, IndexError) as exc:
+                logger.warning("Skipping row due to parse error: %s – %s", row, exc)
+                continue
+
+    logger.info("Loaded %d records from %s (comma format)", len(records), filepath)
     return records
