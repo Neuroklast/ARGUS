@@ -45,6 +45,16 @@ We are grateful to the authors and contributors of the following projects.
    License: MIT License
    Source: https://github.com/xolox/python-coloredlogs
 
+9. SciPy
+   Copyright (c) 2001-2024 SciPy Developers
+   License: BSD-3-Clause License
+   Source: https://scipy.org/
+
+10. pyttsx3
+    Copyright (c) 2017 Natesh M Bhat
+    License: Mozilla Public License 2.0 (MPL 2.0)
+    Source: https://github.com/nateshmbhat/pyttsx3
+
 -------------------------------------------------------------------------
 LICENSE SUMMARIES
 -------------------------------------------------------------------------
@@ -103,3 +113,8 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+--- MOZILLA PUBLIC LICENSE 2.0 (SUMMARY) ---
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.

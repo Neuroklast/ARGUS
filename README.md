@@ -22,7 +22,17 @@ ARGUS/
 │   ├── ascom_handler.py      # ASCOM telescope communication
 │   ├── vision.py             # ArUco marker detection and tracking
 │   ├── serial_ctrl.py        # Arduino serial communication
-│   └── math_utils.py         # Azimuth calculations and vector math
+│   ├── math_utils.py         # Azimuth calculations and vector math
+│   ├── calibration.py        # GEM offset calibration solver
+│   ├── settings_gui.py       # Settings window for config editing
+│   ├── simulation_sensor.py  # Simulated dome sensor for testing
+│   └── voice.py              # Text-to-speech feedback
+├── docs/
+│   ├── USER_MANUAL_EN.md     # User manual (English)
+│   └── USER_MANUAL_DE.md     # Benutzerhandbuch (Deutsch)
+├── tests/                    # Automated test suite
+├── arduino_example/          # Example Arduino firmware
+├── assets/themes/            # GUI colour themes
 ├── config.yaml               # Configuration file
 ├── requirements.txt          # Python dependencies
 ├── setup.py                  # Package setup
@@ -195,7 +205,17 @@ STATUS
 
 ## License
 
-This project is open-source. See LICENSE file for details.
+This software is proprietary. Copyright © 2026 Kay Schäfer. All Rights Reserved.
+Governed by the laws of the Federal Republic of Germany.
+See [LICENSE](LICENSE) for full terms.
+
+Third-party open-source components are listed in
+[THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+
+## Documentation
+
+- **English User Manual**: [docs/USER_MANUAL_EN.md](docs/USER_MANUAL_EN.md)
+- **Benutzerhandbuch (Deutsch)**: [docs/USER_MANUAL_DE.md](docs/USER_MANUAL_DE.md)
 
 ## Contributing
 
