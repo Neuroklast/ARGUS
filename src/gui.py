@@ -6,7 +6,15 @@ Professional dark-mode interface built with customtkinter for
 observatory dome control and monitoring.
 """
 
+import math
+from pathlib import Path
+from tkinter import Canvas
+
 import customtkinter as ctk
+
+# Path to the red-night theme JSON shipped with the project
+_THEME_DIR = Path(__file__).resolve().parent.parent / "assets" / "themes"
+RED_NIGHT_THEME = str(_THEME_DIR / "red_night.json")
 
 # ---------------------------------------------------------------------------
 # Font Constants (Monospace is critical for telemetry readouts)
@@ -77,13 +85,15 @@ class ArgusApp(ctk.CTk):
         self.dashboard_frame.grid_columnconfigure(0, weight=1)
 
         # Distribute vertical space among sections
-        for i in range(4):
+        for i in range(6):
             self.dashboard_frame.grid_rowconfigure(i, weight=1)
 
         self._create_telemetry_section()
+        self._create_radar_section()
         self._create_status_section()
         self._create_controls_section()
         self._create_mode_section()
+        self._create_settings_section()
 
     # -- A. Telemetry ---------------------------------------------------
     def _create_telemetry_section(self):
@@ -119,11 +129,68 @@ class ArgusApp(ctk.CTk):
         )
         self.lbl_error.grid(row=3, column=1, sticky="e", padx=8, pady=(2, 8))
 
-    # -- B. Status Monitor ----------------------------------------------
-    def _create_status_section(self):
-        """Section B – small coloured status indicators."""
+    # -- B. Radar -----------------------------------------------------------
+    def _create_radar_section(self):
+        """Section B – top-down radar view of dome and mount."""
         frame = ctk.CTkFrame(self.dashboard_frame)
         frame.grid(row=1, column=0, sticky="nsew", padx=8, pady=4)
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(1, weight=1)
+
+        ctk.CTkLabel(frame, text="RADAR", font=FONT_SECTION).grid(
+            row=0, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
+
+        self.radar_canvas = Canvas(
+            frame, width=180, height=180,
+            bg="#000000", highlightthickness=0,
+        )
+        self.radar_canvas.grid(row=1, column=0, padx=8, pady=(2, 8))
+
+        # Draw initial idle state
+        self.draw_radar(0.0, 0.0)
+
+    def draw_radar(self, mount_az: float, dome_az: float) -> None:
+        """Redraw the radar view showing mount and dome positions.
+
+        Args:
+            mount_az: Current mount azimuth in degrees.
+            dome_az:  Current dome slit azimuth in degrees.
+        """
+        c = self.radar_canvas
+        c.delete("all")
+
+        cx, cy = 90, 90  # centre of the canvas
+        r = 70            # observatory circle radius
+
+        # 1. Observatory circle
+        c.create_oval(
+            cx - r, cy - r, cx + r, cy + r,
+            outline="#555555", width=2,
+        )
+
+        # 2. Red arrow for mount azimuth (telescope)
+        # Tk canvas angles: 0° = East, so subtract 90° to map azimuth 0° → North (up)
+        angle_rad = math.radians(mount_az - 90)
+        arrow_len = r - 6
+        ax = cx + arrow_len * math.cos(angle_rad)
+        ay = cy + arrow_len * math.sin(angle_rad)
+        c.create_line(cx, cy, ax, ay, fill="#FF0000", width=3, arrow="last")
+
+        # 3. Yellow arc for dome slit (~20° wide)
+        arc_half = 10  # half-width in degrees
+        start_angle = 90 - dome_az - arc_half  # Tk arcs: 0° = East, CCW
+        c.create_arc(
+            cx - r, cy - r, cx + r, cy + r,
+            start=start_angle, extent=2 * arc_half,
+            outline="#F1C40F", width=4, style="arc",
+        )
+
+    # -- C. Status Monitor ----------------------------------------------
+    def _create_status_section(self):
+        """Section C – small coloured status indicators."""
+        frame = ctk.CTkFrame(self.dashboard_frame)
+        frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=4)
         frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         ctk.CTkLabel(frame, text="STATUS", font=FONT_SECTION).grid(
@@ -149,9 +216,9 @@ class ArgusApp(ctk.CTk):
 
     # -- C. Manual Controls ---------------------------------------------
     def _create_controls_section(self):
-        """Section C – CCW / STOP / CW buttons."""
+        """Section D – CCW / STOP / CW buttons."""
         frame = ctk.CTkFrame(self.dashboard_frame)
-        frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=4)
+        frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=4)
         frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         ctk.CTkLabel(frame, text="MANUAL CONTROL", font=FONT_SECTION).grid(
@@ -179,9 +246,9 @@ class ArgusApp(ctk.CTk):
 
     # -- D. Settings / Mode ---------------------------------------------
     def _create_mode_section(self):
-        """Section D – mode selector segmented button."""
+        """Section E – mode selector segmented button."""
         frame = ctk.CTkFrame(self.dashboard_frame)
-        frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=(4, 8))
+        frame.grid(row=4, column=0, sticky="nsew", padx=8, pady=4)
         frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(frame, text="MODE", font=FONT_SECTION).grid(
@@ -196,6 +263,29 @@ class ArgusApp(ctk.CTk):
         )
         self.mode_selector.set("MANUAL")
         self.mode_selector.grid(row=1, column=0, sticky="ew", padx=8, pady=(2, 8))
+
+    # -- F. Settings (Night Mode) ----------------------------------------
+    def _create_settings_section(self):
+        """Section F – settings with Night Mode toggle."""
+        frame = ctk.CTkFrame(self.dashboard_frame)
+        frame.grid(row=5, column=0, sticky="nsew", padx=8, pady=(4, 8))
+        frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(frame, text="SETTINGS", font=FONT_SECTION).grid(
+            row=0, column=0, sticky="w", padx=8, pady=(8, 4)
+        )
+
+        self.night_mode_var = ctk.StringVar(value="off")
+        self.night_mode_switch = ctk.CTkSwitch(
+            frame,
+            text="Night Mode",
+            font=FONT_INDICATOR,
+            variable=self.night_mode_var,
+            onvalue="on",
+            offvalue="off",
+            command=self.on_night_mode_toggled,
+        )
+        self.night_mode_switch.grid(row=1, column=0, sticky="w", padx=8, pady=(2, 8))
 
     # ===================================================================
     # Public API
@@ -212,6 +302,7 @@ class ArgusApp(ctk.CTk):
         self.lbl_mount_az.configure(text=f"{mount_az:06.1f}°")
         self.lbl_dome_az.configure(text=f"{dome_az:06.1f}°")
         self.lbl_error.configure(text=f"{error:+06.1f}°")
+        self.draw_radar(mount_az, dome_az)
 
     def set_indicator(self, name: str, active: bool) -> None:
         """
@@ -249,6 +340,13 @@ class ArgusApp(ctk.CTk):
     def on_mode_changed(self, value: str):
         """Dummy handler – mode selection changed."""
         print(f"Mode: {value}")
+
+    def on_night_mode_toggled(self):
+        """Toggle between 'red_night' and 'dark-blue' colour themes."""
+        if self.night_mode_var.get() == "on":
+            ctk.set_default_color_theme(RED_NIGHT_THEME)
+        else:
+            ctk.set_default_color_theme("dark-blue")
 
 
 # -----------------------------------------------------------------------

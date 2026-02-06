@@ -18,5 +18,8 @@ pyyaml>=6.0
 # GUI
 customtkinter>=5.2.0
 
+# Text-to-Speech
+pyttsx3>=2.90
+
 # Logging
 coloredlogs>=15.0

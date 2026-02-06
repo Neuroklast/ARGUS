@@ -39,6 +39,11 @@ try:
 except ImportError:                     # pragma: no cover
     MathUtils = None                    # type: ignore[assignment,misc]
 
+try:
+    from voice import VoiceAssistant
+except ImportError:                     # pragma: no cover
+    VoiceAssistant = None               # type: ignore[assignment,misc]
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
@@ -92,6 +97,8 @@ class ArgusController:
         self._mode: str = "MANUAL"
         self._lock = threading.Lock()
         self._running = True
+        self._last_status: str = "Stopped"
+        self._last_vision_ok: bool = True
 
         # -- Appearance (must be set before any widget is created) --------
         ctk.set_appearance_mode("Dark")
@@ -112,6 +119,7 @@ class ArgusController:
         self._init_ascom()
         self._init_serial()
         self._init_vision()
+        self._init_voice()
 
         # -- Bind GUI callbacks ------------------------------------------
         self.app.btn_ccw.configure(command=self.on_move_left)
@@ -227,6 +235,17 @@ class ArgusController:
         except Exception as exc:
             logger.error("Failed to initialize VisionSystem: %s", exc)
             self.vision = None
+
+    def _init_voice(self):
+        """Initialise the voice assistant (if available)."""
+        self.voice = None
+        if VoiceAssistant is None:
+            logger.warning("Voice module not available – skipping TTS")
+            return
+        try:
+            self.voice = VoiceAssistant()
+        except Exception as exc:
+            logger.error("Failed to initialize VoiceAssistant: %s", exc)
 
     def _update_indicators(self):
         """Push current hardware status to the GUI indicator badges."""
@@ -354,6 +373,27 @@ class ArgusController:
             # Simulation sensor always ticks (all modes)
             self.sensor.update(dt)
             dome_az = self.sensor.get_azimuth()
+
+            # -- Voice feedback: Moving → Stopped -------------------------
+            current_status = "Moving" if abs(self.sensor.slew_rate) > 1e-6 else "Stopped"
+            if self._last_status == "Moving" and current_status == "Stopped":
+                if self.voice:
+                    self.voice.say("Target reached")
+            self._last_status = current_status
+
+            # -- Voice feedback: Vision marker lost -----------------------
+            vision_ok = True
+            if self.vision:
+                frame = self.vision.capture_frame() if drift_enabled else None
+                if frame is not None:
+                    markers = self.vision.detect_markers(frame)
+                    vision_ok = bool(markers)
+                else:
+                    vision_ok = False
+                if self._last_vision_ok and not vision_ok:
+                    if self.voice:
+                        self.voice.say("Visual contact lost")
+            self._last_vision_ok = vision_ok
 
             # Push telemetry to GUI
             try:
