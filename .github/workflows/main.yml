@@ -1,13 +1,13 @@
-name: Build and Release ARGUS
+name: Build ARGUS Portable
 
 on:
   push:
     tags:
-      - 'v*' # Feuert nur bei Tags wie v1.0, v2.0.1 etc.
-  workflow_dispatch: # Erlaubt manuelles Starten
+      - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write # WICHTIG: Erlaubt dem Bot, Releases zu erstellen
+  contents: write
 
 jobs:
   build-and-release:
@@ -29,17 +29,22 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Build EXE
-      # Hier ist der Build-Befehl inklusive Assets und CustomTkinter Fix
+    - name: Build Portable Folder
+      # --onedir: Erstellt einen Ordner statt einer Datei
+      # Wir packen config und assets direkt dazu
       run: |
-        pyinstaller --noconfirm --onefile --windowed --name ARGUS --add-data "config.yaml;." --add-data "assets;assets" --collect-all customtkinter src/main.py
+        pyinstaller --noconfirm --onedir --windowed --name ARGUS --add-data "config.yaml;." --add-data "assets;assets" --collect-all customtkinter src/main.py
 
-    # DIESER TEIL IST NEU: Erstellt das Release
+    - name: Zip the Build
+      # Packt den erstellten Ordner (dist/ARGUS) in eine ZIP-Datei
+      run: |
+        powershell Compress-Archive -Path dist/ARGUS -DestinationPath dist/ARGUS-Portable.zip
+
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/') # Nur ausführen, wenn ein Tag gepusht wurde
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: dist/ARGUS.exe
+        files: dist/ARGUS-Portable.zip
         draft: false
         prerelease: false
       env:
