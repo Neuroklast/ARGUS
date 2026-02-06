@@ -201,3 +201,37 @@ class TestGuiCardDesign:
     def test_card_corner_radius(self):
         from gui import CARD_CORNER_RADIUS
         assert CARD_CORNER_RADIUS > 0
+
+
+# ---------------------------------------------------------------------------
+# SegmentedButton serialization
+# ---------------------------------------------------------------------------
+class TestSegmentedButtonSerialization:
+    """Ensure SegmentedButton.selected uses a list, not a set.
+
+    Flet 0.80+ communicates with the frontend via msgpack which cannot
+    serialize Python ``set`` objects.  Using a list avoids the
+    ``TypeError: can not serialize 'set' object`` crash at startup.
+    """
+
+    def test_selected_is_list_not_set(self):
+        import flet as ft
+        from gui import ArgusGUI
+
+        btn = ft.SegmentedButton(
+            segments=[
+                ft.Segment(value="MANUAL", label=ft.Text("MANUAL")),
+                ft.Segment(value="AUTO-SLAVE", label=ft.Text("AUTO-SLAVE")),
+            ],
+            selected=["MANUAL"],
+        )
+        assert isinstance(btn.selected, list), (
+            "selected must be a list for msgpack serialization"
+        )
+
+    def test_selected_serializable_with_msgpack(self):
+        import msgpack
+
+        selected = ["MANUAL"]
+        packed = msgpack.packb(selected)
+        assert msgpack.unpackb(packed) == [b"MANUAL"] or msgpack.unpackb(packed, raw=False) == ["MANUAL"]
