@@ -30,7 +30,7 @@ jobs:
         pip install pyinstaller
 
     # SCHRITT 1: PyInstaller (mit Pfad-Fix)
-- name: Build Application Folder
+    - name: Build Application Folder
       # Fix: --collect-all flet hinzugefügt, damit das Desktop-Modul in der EXE landet
       run: |
         pyinstaller --noconfirm --onedir --windowed --name ARGUS --paths src --add-data "config.yaml;." --add-data "assets;assets" --collect-all customtkinter --collect-all flet --hidden-import flet_desktop src/main.py
