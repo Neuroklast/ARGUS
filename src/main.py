@@ -22,10 +22,10 @@ try:
 except ImportError:
     COLOREDLOGS_AVAILABLE = False
 
-from src.ascom_handler import ASCOMHandler
-from src.vision import VisionSystem
-from src.serial_ctrl import SerialController
-from src.math_utils import MathUtils
+from ascom_handler import ASCOMHandler
+from vision import VisionSystem
+from serial_ctrl import SerialController
+from math_utils import MathUtils
 
 
 class ARGUS:

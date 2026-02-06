@@ -136,3 +136,4 @@ Thumbs.db
 # Project specific
 config_local.yaml
 *.log
+test_structure.py
