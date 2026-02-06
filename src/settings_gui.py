@@ -16,9 +16,11 @@ from typing import Optional
 import yaml
 import customtkinter as ctk
 
+from path_utils import get_base_path
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+DEFAULT_CONFIG_PATH = get_base_path() / "config.yaml"
 
 
 class SettingsWindow(ctk.CTkToplevel):

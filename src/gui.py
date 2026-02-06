@@ -17,11 +17,12 @@ from tkinter import Canvas
 import customtkinter as ctk
 
 from settings_gui import SettingsWindow
+from path_utils import get_base_path
 
 logger = logging.getLogger(__name__)
 
 # Path to the red-night theme JSON shipped with the project
-_THEME_DIR = Path(__file__).resolve().parent.parent / "assets" / "themes"
+_THEME_DIR = get_base_path() / "assets" / "themes"
 RED_NIGHT_THEME = str(_THEME_DIR / "red_night.json")
 
 # ---------------------------------------------------------------------------
