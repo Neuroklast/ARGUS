@@ -1,0 +1,54 @@
+# ARGUS Configuration File
+# Advanced Rotation Guidance Using Sensors
+
+# ASCOM Telescope Settings
+ascom:
+  telescope_prog_id: "ASCOM.Simulator.Telescope"  # Change to your telescope driver
+  poll_interval: 1.0  # seconds
+  
+# Vision System Settings
+vision:
+  camera_index: 0  # USB webcam index
+  resolution:
+    width: 1280
+    height: 720
+  fps: 30
+  aruco:
+    dictionary: "DICT_4X4_50"  # ArUco dictionary type
+    marker_size: 0.05  # meters
+  detection:
+    blur_kernel: 5
+    threshold_block_size: 11
+    
+# Dome Hardware Settings
+hardware:
+  serial_port: "COM3"  # Arduino serial port
+  baud_rate: 9600
+  timeout: 1.0  # seconds
+  
+# Mathematical Calculations
+math:
+  observatory:
+    latitude: 51.5074  # degrees (London example)
+    longitude: -0.1278  # degrees
+    elevation: 0  # meters
+  dome:
+    radius: 2.5  # meters
+    slit_width: 0.8  # meters
+  mount:
+    pier_height: 1.5  # meters
+    gem_offset_east: 0.0  # meters
+    gem_offset_north: 0.0  # meters
+    
+# Control Loop Settings
+control:
+  update_rate: 10  # Hz
+  drift_correction_enabled: true
+  correction_threshold: 0.5  # degrees
+  max_speed: 100  # motor speed units
+  
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "argus.log"
+  console: true
