@@ -155,9 +155,9 @@ class ArgusGUI:
                     color=COLOR_NO_SIGNAL,
                     text_align=ft.TextAlign.CENTER,
                 ),
-                alignment=ft.alignment.center,
+                alignment=ft.Alignment(0, 0),
                 expand=True,
-                border=ft.border.all(1, "#333333"),
+                border=ft.Border.all(1, "#333333"),
             ),
             expand=True,
         )
@@ -178,7 +178,7 @@ class ArgusGUI:
             ft.Text("RADAR", weight=ft.FontWeight.BOLD, size=13),
             ft.Container(
                 content=self.radar_canvas,
-                alignment=ft.alignment.center,
+                alignment=ft.Alignment(0, 0),
             ),
         ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
 
