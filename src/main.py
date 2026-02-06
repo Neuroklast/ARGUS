@@ -14,6 +14,12 @@ import customtkinter as ctk
 from gui import ArgusApp
 from simulation_sensor import SimulationSensor
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+CONTROL_LOOP_INTERVAL = 0.05        # seconds (~20 FPS)
+FIXED_MOUNT_AZIMUTH = 180.0         # static mount azimuth for testing
+
 
 class ArgusController:
     """Controller that bridges the GUI and the (simulated) sensor."""
@@ -61,14 +67,15 @@ class ArgusController:
             self.sensor.update(dt)
             az = self.sensor.get_azimuth()
 
-            # Schedule the GUI update on the main thread (tkinter requirement)
             try:
-                self.app.after(0, self.app.update_telemetry, 180.0, az)
+                self.app.after(
+                    0, self.app.update_telemetry, FIXED_MOUNT_AZIMUTH, az
+                )
             except RuntimeError:
                 # mainloop not yet (or no longer) running – skip GUI update
                 pass
 
-            time.sleep(0.05)
+            time.sleep(CONTROL_LOOP_INTERVAL)
 
 
 def main():
