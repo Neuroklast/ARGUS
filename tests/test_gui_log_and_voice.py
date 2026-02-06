@@ -215,19 +215,18 @@ class TestSegmentedButtonSerialization:
     """
 
     def test_selected_is_list_not_set(self):
-        import flet as ft
+        import ast
+        import inspect
+        import textwrap
         from gui import ArgusGUI
 
-        btn = ft.SegmentedButton(
-            segments=[
-                ft.Segment(value="MANUAL", label=ft.Text("MANUAL")),
-                ft.Segment(value="AUTO-SLAVE", label=ft.Text("AUTO-SLAVE")),
-            ],
-            selected=["MANUAL"],
-        )
-        assert isinstance(btn.selected, list), (
-            "selected must be a list for msgpack serialization"
-        )
+        source = textwrap.dedent(inspect.getsource(ArgusGUI.__init__))
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.keyword) and node.arg == "selected":
+                assert isinstance(node.value, ast.List), (
+                    "SegmentedButton 'selected' must be a list literal, not a set"
+                )
 
     def test_selected_serializable_with_msgpack(self):
         import msgpack
