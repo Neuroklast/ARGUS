@@ -571,7 +571,8 @@ class ArgusController:
                                         target_az = accepted
 
                     elif health == HEALTH_DEGRADED:
-                        logger.warning("Vision contact lost – running in blind mode (math only)")
+                        if self._last_vision_ok:
+                            logger.warning("Running in blind mode (math only)")
 
                     # Step 5 – send MOVE command with hysteresis
                     dome_az = self.sensor.get_azimuth()
