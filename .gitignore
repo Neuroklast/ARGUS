@@ -137,3 +137,4 @@ Thumbs.db
 config_local.yaml
 *.log
 test_structure.py
+PROJECT_SUMMARY.md
