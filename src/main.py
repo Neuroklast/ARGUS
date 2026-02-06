@@ -101,6 +101,7 @@ class GuiLogHandler(logging.Handler):
         self._gui = gui
 
     def emit(self, record):
+        """Format *record* and append it to the GUI log terminal."""
         try:
             msg = self.format(record)
             self._gui.write_log(msg)
@@ -286,6 +287,14 @@ class ArgusController:
     """
 
     def __init__(self, config: Optional[dict] = None, gui: Optional['ArgusGUI'] = None):
+        """Initialise the controller, hardware modules, and background loop.
+
+        Args:
+            config: Validated configuration dictionary.  When ``None``,
+                    the default ``config.yaml`` is loaded automatically.
+            gui:    Optional :class:`ArgusGUI` instance.  Pass ``None``
+                    for headless / test operation.
+        """
         if config is None:
             config = load_config()
         self.config = config
@@ -384,6 +393,7 @@ class ArgusController:
 
     # ---- Hardware initialisation helpers --------------------------------
     def _init_math_utils(self):
+        """Create the :class:`MathUtils` instance from observatory config."""
         if MathUtils is None:
             logger.warning("MathUtils module not available")
             return
@@ -447,6 +457,7 @@ class ArgusController:
             logger.warning("Could not sync site data from mount: %s", exc)
 
     def _init_ascom(self):
+        """Connect to the ASCOM telescope driver (if available)."""
         if ASCOMHandler is None:
             logger.warning("ASCOM module not available – skipping telescope")
             return
@@ -466,6 +477,7 @@ class ArgusController:
             self.ascom = None
 
     def _init_serial(self):
+        """Open the serial port to the Arduino motor controller."""
         if SerialController is None:
             logger.warning(
                 "Serial module not available – skipping motor control"
@@ -488,6 +500,7 @@ class ArgusController:
             self.serial = None
 
     def _init_vision(self):
+        """Initialise the vision system, with camera auto-discovery fallback."""
         if VisionSystem is None:
             logger.warning("Vision module not available – skipping camera")
             return

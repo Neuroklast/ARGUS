@@ -16,8 +16,11 @@ Version 0.1.0
 6. [Benutzeroberfläche](#6-benutzeroberfläche)
 7. [Betriebsmodi](#7-betriebsmodi)
 8. [Kalibrierung](#8-kalibrierung)
-9. [Fehlerbehebung](#9-fehlerbehebung)
-10. [Sicherheitshinweise](#10-sicherheitshinweise)
+9. [Kuppeltreiber & Protokolle](#9-kuppeltreiber--protokolle)
+10. [ASCOM-Alpaca-Server](#10-ascom-alpaca-server)
+11. [Wiedergabe- / Demomodus](#11-wiedergabe---demomodus)
+12. [Fehlerbehebung](#12-fehlerbehebung)
+13. [Sicherheitshinweise](#13-sicherheitshinweise)
 
 ---
 
@@ -174,7 +177,24 @@ safety:
 - **max_nudge_while_protruding**: Maximale Kuppelkorrektur in Grad, die
   erlaubt ist, während das Teleskop im Spalt steht.
 
-### 4.6 Einstellungen über die GUI
+### 4.6 Regelkreis-Einstellungen
+
+```yaml
+control:
+  update_rate: 10
+  drift_correction_enabled: true
+  correction_threshold: 0.5
+  max_speed: 100
+```
+
+- **update_rate**: Wie oft pro Sekunde der Regelkreis läuft (Hz).
+- **drift_correction_enabled**: Auf `false` setzen, um die visuelle
+  Driftkorrektur komplett zu deaktivieren.
+- **correction_threshold**: Mindest-Azimut-Fehler in Grad, bevor der Motor
+  angesteuert wird (Hysterese-Band).
+- **max_speed**: Obere Grenze für den Proportionalregler (0–100).
+
+### 4.7 Einstellungen über die GUI
 
 Sie können Einstellungen auch zur Laufzeit über **⚙ SETTINGS** in der GUI
 bearbeiten. Änderungen werden beim Klick auf **SAVE** in `config.yaml`
@@ -297,7 +317,88 @@ Erstinstallation oder bei Änderungen am Teleskopaufbau durchgeführt werden.
 
 **Voraussetzungen**: ASCOM-Verbindung und mindestens ein Simulationssensor.
 
-## 9. Fehlerbehebung
+## 9. Kuppeltreiber & Protokolle
+
+### 9.1 Motortypen
+
+ARGUS unterstützt drei Kuppelmotor-Strategien. Wählen Sie den passenden Typ
+in `config.yaml` unter `hardware.motor_type`:
+
+| Typ | Beschreibung | Wichtige Einstellung |
+|---|---|---|
+| `stepper` | Schrittmotor (Open-Loop). Position wird über Schritte-pro-Grad berechnet. | `steps_per_degree` |
+| `encoder` | Gleichstrommotor mit Encoder-Rückmeldung (Closed-Loop). Stoppt innerhalb der Toleranz. | `ticks_per_degree`, `encoder_tolerance` |
+| `timed` | Relais-Motor ohne Sensor. Position wird durch Totrechnung geschätzt. | `degrees_per_second` |
+
+### 9.2 Kommunikationsprotokolle
+
+Die Einstellung `hardware.protocol` bestimmt das Befehlsformat für den Motor:
+
+| Protokoll | Befehle | Typischer Einsatz |
+|---|---|---|
+| `argus` | `MOVE az speed`, `STOP`, `STATUS`, `HOME dir` | ARGUS-Arduino-Firmware |
+| `lesvedome` | `G az`, `S`, `P`, `H` | LesveDome-kompatible Steuerungen |
+| `relay` | `RELAY CW`, `RELAY CCW`, `RELAY OFF` | Einfache Relaisplatinen |
+
+### 9.3 Homing
+
+Wenn Ihre Kuppel einen Home-Positionsschalter besitzt, aktivieren Sie Homing
+in der Konfiguration:
+
+```yaml
+hardware:
+  homing:
+    enabled: true
+    azimuth: 0.0       # Position des Home-Schalters in Grad
+    direction: "CW"    # Suchrichtung zum Schalter
+```
+
+ARGUS sendet auf Anfrage einen HOME-Befehl und setzt den internen
+Positionszähler auf den konfigurierten Azimut zurück.
+
+## 10. ASCOM-Alpaca-Server
+
+ARGUS enthält einen integrierten **ASCOM-Alpaca**-REST-Server, der die Kuppel
+als Standard-Alpaca-Dome-Gerät auf TCP-Port **11111** bereitstellt.
+
+Automatisierungssoftware wie **NINA**, **Voyager** oder **SGPro** kann sich
+mit `http://<Host>:11111/api/v1/dome/0/` verbinden und die Kuppel steuern,
+ohne einen nativen ASCOM-Treiber zu installieren.
+
+### Unterstützte Alpaca-Endpunkte
+
+| Endpunkt | Beschreibung |
+|---|---|
+| `GET /azimuth` | Aktueller Kuppel-Azimut |
+| `GET /slewing` | Ob sich die Kuppel bewegt |
+| `PUT /slewtoazimuth` | Kuppel zu einem Ziel-Azimut fahren |
+| `PUT /park` | Kuppel bei 0° (Norden) parken |
+| `PUT /abortslew` | Nothalt |
+| `PUT /findhome` | Homing-Sequenz starten |
+| `GET/PUT /slaved` | Dome-Slaving-Status abfragen oder setzen |
+
+Der Server startet automatisch beim Programmstart und läuft in einem
+Hintergrund-Thread.
+
+## 11. Wiedergabe- / Demomodus
+
+ARGUS kann aufgezeichnete Teleskop-Sitzungen aus CSV-Dateien wiedergeben. Dies
+ist nützlich für Tests, Demonstrationen und die Überprüfung der Kalibrierung
+ohne ein echtes Teleskop.
+
+Während der Wiedergabe wird der ASCOM-Handler temporär durch einen
+`ReplayASCOMHandler` ersetzt, der die aufgezeichneten Daten in der
+Original-Geschwindigkeit (oder beschleunigt) in den Regelkreis einspeist.
+
+### Unterstützte CSV-Formate
+
+1. **Semikolon-getrennt** (Legacy):
+   `ISO_TIMESTAMP;LST;RA_MOUNT;DEC_MOUNT;HA_MOUNT;AZ_DEG;ALT_DEG;PIER_SIDE;STATUS`
+
+2. **Komma-getrennt** (mit Kopfzeile):
+   `Timestamp_UTC_Local,Timestamp_Unix,Status,PierSide,HA_Current_Hour,Dec_Current_Deg,...`
+
+## 12. Fehlerbehebung
 
 ### ASCOM-Verbindung fehlgeschlagen
 
@@ -332,7 +433,7 @@ Erstinstallation oder bei Änderungen am Teleskopaufbau durchgeführt werden.
   (`pip install pyttsx3`).
 - Prüfen Sie, ob eine Sprach-Engine auf Ihrem System verfügbar ist.
 
-## 10. Sicherheitshinweise
+## 13. Sicherheitshinweise
 
 - **Kollisionsvermeidung**: Wenn `telescope_protrudes` aktiviert ist, parkt
   ARGUS das Teleskop vor größeren Kuppelrotationen. Überprüfen Sie stets,
