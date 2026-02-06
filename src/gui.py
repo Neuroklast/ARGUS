@@ -12,6 +12,8 @@ from tkinter import Canvas
 
 import customtkinter as ctk
 
+from settings_gui import SettingsWindow
+
 # Path to the red-night theme JSON shipped with the project
 _THEME_DIR = Path(__file__).resolve().parent.parent / "assets" / "themes"
 RED_NIGHT_THEME = str(_THEME_DIR / "red_night.json")
@@ -264,15 +266,15 @@ class ArgusApp(ctk.CTk):
         self.mode_selector.set("MANUAL")
         self.mode_selector.grid(row=1, column=0, sticky="ew", padx=8, pady=(2, 8))
 
-    # -- F. Settings (Night Mode) ----------------------------------------
+    # -- F. Settings (Night Mode + Settings Window) -----------------------
     def _create_settings_section(self):
-        """Section F – settings with Night Mode toggle."""
+        """Section F – settings with Night Mode toggle and settings button."""
         frame = ctk.CTkFrame(self.dashboard_frame)
         frame.grid(row=5, column=0, sticky="nsew", padx=8, pady=(4, 8))
         frame.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(frame, text="SETTINGS", font=FONT_SECTION).grid(
-            row=0, column=0, sticky="w", padx=8, pady=(8, 4)
+            row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4)
         )
 
         self.night_mode_var = ctk.StringVar(value="off")
@@ -286,6 +288,16 @@ class ArgusApp(ctk.CTk):
             command=self.on_night_mode_toggled,
         )
         self.night_mode_switch.grid(row=1, column=0, sticky="w", padx=8, pady=(2, 8))
+
+        self._settings_window = None
+        self.btn_settings = ctk.CTkButton(
+            frame,
+            text="⚙ SETTINGS",
+            font=FONT_BUTTON,
+            width=100,
+            command=self.open_settings,
+        )
+        self.btn_settings.grid(row=1, column=1, sticky="e", padx=8, pady=(2, 8))
 
     # ===================================================================
     # Public API
@@ -347,6 +359,13 @@ class ArgusApp(ctk.CTk):
             ctk.set_default_color_theme(RED_NIGHT_THEME)
         else:
             ctk.set_default_color_theme("dark-blue")
+
+    def open_settings(self):
+        """Open the settings window (singleton – only one at a time)."""
+        if self._settings_window is not None and self._settings_window.winfo_exists():
+            self._settings_window.focus()
+            return
+        self._settings_window = SettingsWindow(self)
 
 
 # -----------------------------------------------------------------------

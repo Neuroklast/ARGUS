@@ -4,9 +4,13 @@ Main Application Entry Point (Controller Pattern)
 
 Loads config.yaml, initializes hardware modules, and provides
 a state-machine-driven control loop for MANUAL and AUTO-SLAVE modes.
+Includes degraded-mode logic, outlier rejection, hysteresis, and
+production-grade rotating log files.
 """
 
 import logging
+import logging.handlers
+import sys
 import threading
 import time
 from pathlib import Path
@@ -48,32 +52,136 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 
+# ---------------------------------------------------------------------------
+# Default configuration – used as fallback when keys are missing / invalid
+# ---------------------------------------------------------------------------
+DEFAULT_CONFIG: dict = {
+    "ascom": {
+        "telescope_prog_id": "ASCOM.Simulator.Telescope",
+        "poll_interval": 1.0,
+    },
+    "vision": {
+        "camera_index": 0,
+        "resolution": {"width": 1280, "height": 720},
+        "fps": 30,
+        "aruco": {"dictionary": "DICT_4X4_50", "marker_size": 0.05},
+    },
+    "hardware": {
+        "serial_port": "COM3",
+        "baud_rate": 9600,
+        "timeout": 1.0,
+    },
+    "math": {
+        "observatory": {"latitude": 51.5074, "longitude": -0.1278, "elevation": 0},
+        "dome": {"radius": 2.5, "slit_width": 0.8},
+        "mount": {
+            "pier_height": 1.5,
+            "gem_offset_east": 0.0,
+            "gem_offset_north": 0.0,
+        },
+    },
+    "control": {
+        "update_rate": 10,
+        "drift_correction_enabled": True,
+        "correction_threshold": 0.5,
+        "max_speed": 100,
+    },
+    "logging": {
+        "level": "INFO",
+        "file": "argus.log",
+        "console": True,
+    },
+}
+
+# Health-state constants
+HEALTH_HEALTHY = "HEALTHY"
+HEALTH_DEGRADED = "DEGRADED"
+HEALTH_CRITICAL = "CRITICAL"
+
 
 # ---------------------------------------------------------------------------
-# Config loader
+# Config helpers
 # ---------------------------------------------------------------------------
+def _deep_merge(defaults: dict, overrides: dict) -> dict:
+    """Recursively merge *overrides* into *defaults* (non-destructive)."""
+    merged = dict(defaults)
+    for key, default_val in defaults.items():
+        if key not in overrides:
+            logger.warning("Config key '%s' missing, using default %r", key, default_val)
+            continue
+        override_val = overrides[key]
+        if isinstance(default_val, dict) and isinstance(override_val, dict):
+            merged[key] = _deep_merge(default_val, override_val)
+        elif isinstance(default_val, dict) and not isinstance(override_val, dict):
+            logger.warning(
+                "Config key '%s' has wrong type (expected dict), using default", key
+            )
+        elif not _type_ok(default_val, override_val):
+            logger.warning(
+                "Config key '%s' has wrong type (expected %s, got %s), using default %r",
+                key,
+                type(default_val).__name__,
+                type(override_val).__name__,
+                default_val,
+            )
+        else:
+            merged[key] = override_val
+    # Carry forward extra keys from overrides that are not in defaults
+    for key in overrides:
+        if key not in defaults:
+            merged[key] = overrides[key]
+    return merged
+
+
+def _type_ok(default, value) -> bool:
+    """Return True when *value* is type-compatible with *default*."""
+    if isinstance(default, bool):
+        return isinstance(value, bool)
+    if isinstance(default, int):
+        return isinstance(value, (int, float))
+    if isinstance(default, float):
+        return isinstance(value, (int, float))
+    if isinstance(default, str):
+        return isinstance(value, str)
+    return True  # unknown types pass through
+
+
 def load_config(path: Optional[str] = None) -> dict:
-    """Load configuration from a YAML file.
+    """Load configuration from a YAML file with validation.
+
+    Missing keys or wrong types fall back to ``DEFAULT_CONFIG``.
+    If the file cannot be parsed at all the full defaults are returned.
 
     Args:
         path: Path to config file.  Defaults to ``config.yaml`` in the
               repository root.
 
     Returns:
-        Configuration dictionary (empty dict on error).
+        Validated configuration dictionary.
     """
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
     try:
         with open(config_path, "r") as fh:
-            config = yaml.safe_load(fh)
+            raw = yaml.safe_load(fh)
+        if not isinstance(raw, dict):
+            logger.warning("Config file did not produce a dict – using defaults")
+            return dict(DEFAULT_CONFIG)
         logger.info("Configuration loaded from %s", config_path)
-        return config or {}
+        return _deep_merge(DEFAULT_CONFIG, raw)
     except FileNotFoundError:
         logger.warning("Config file not found: %s – using defaults", config_path)
-        return {}
+        return dict(DEFAULT_CONFIG)
     except yaml.YAMLError as exc:
-        logger.error("Error parsing config file: %s", exc)
-        return {}
+        logger.error("Error parsing config file: %s – using defaults", exc)
+        return dict(DEFAULT_CONFIG)
+
+
+# ---------------------------------------------------------------------------
+# Normalisation helper
+# ---------------------------------------------------------------------------
+def normalize_azimuth(az: float) -> float:
+    """Return *az* normalised to 0-360."""
+    return az % 360.0
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +207,12 @@ class ArgusController:
         self._running = True
         self._last_status: str = "Stopped"
         self._last_vision_ok: bool = True
+        self._health: str = HEALTH_HEALTHY
+
+        # -- Outlier rejection state -------------------------------------
+        self._last_drift_az: Optional[float] = None
+        self._stable_drift_count: int = 0
+        self._pending_drift_az: Optional[float] = None
 
         # -- Appearance (must be set before any widget is created) --------
         ctk.set_appearance_mode("Dark")
@@ -135,20 +249,26 @@ class ArgusController:
 
     # ---- Logging --------------------------------------------------------
     def _setup_logging(self):
-        """Configure the root logger from the ``logging`` config section."""
+        """Configure the root logger with RotatingFileHandler."""
         log_cfg = self.config.get("logging", {})
         level = getattr(logging, log_cfg.get("level", "INFO"), logging.INFO)
         log_file = log_cfg.get("file")
+        fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
-        handlers = []
+        handlers: list = []
         if log_cfg.get("console", True):
             handlers.append(logging.StreamHandler())
         if log_file:
-            handlers.append(logging.FileHandler(log_file))
+            rotating = logging.handlers.RotatingFileHandler(
+                log_file,
+                maxBytes=5 * 1024 * 1024,   # 5 MB
+                backupCount=5,
+            )
+            handlers.append(rotating)
 
         logging.basicConfig(
             level=level,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            format=fmt,
             handlers=handlers or [logging.StreamHandler()],
         )
 
@@ -265,12 +385,85 @@ class ArgusController:
         except RuntimeError:
             pass
 
+    # ---- Health checks --------------------------------------------------
+    def check_system_health(self) -> str:
+        """Evaluate system health and return HEALTHY / DEGRADED / CRITICAL.
+
+        * **HEALTHY**: ASCOM + Serial + Vision all available.
+        * **DEGRADED**: Vision lost, but ASCOM + Serial still work.
+        * **CRITICAL**: ASCOM or Serial unavailable – motors must stop.
+        """
+        ascom_ok = self.ascom is not None and self.ascom.connected
+        serial_ok = self.serial is not None and self.serial.connected
+        vision_ok = self.vision is not None and self.vision.camera_open
+
+        if ascom_ok and serial_ok and vision_ok:
+            new_health = HEALTH_HEALTHY
+        elif ascom_ok and serial_ok:
+            new_health = HEALTH_DEGRADED
+        else:
+            new_health = HEALTH_CRITICAL
+
+        if new_health != self._health:
+            logger.warning("Health state changed: %s -> %s", self._health, new_health)
+            self._health = new_health
+
+        return new_health
+
+    # ---- Outlier rejection (vision drift) -------------------------------
+    def _filter_drift(self, drift_az: float) -> Optional[float]:
+        """Apply outlier rejection to a vision-derived azimuth correction.
+
+        * If the value jumps by more than 5° from the last accepted value,
+          treat it as a glitch and start a stability counter.
+        * Accept the new value only after it has been stable (within 1°)
+          for 3 consecutive frames.
+
+        Returns:
+            The accepted drift azimuth, or ``None`` to skip this frame.
+        """
+        glitch_threshold = 5.0
+        stability_tolerance = 1.0
+        required_stable_frames = 3
+
+        if self._last_drift_az is None:
+            self._last_drift_az = drift_az
+            return drift_az
+
+        delta = abs(drift_az - self._last_drift_az)
+
+        if delta <= glitch_threshold:
+            # Normal change – accept immediately
+            self._last_drift_az = drift_az
+            self._pending_drift_az = None
+            self._stable_drift_count = 0
+            return drift_az
+
+        # Potentially a glitch – require stability before accepting
+        if self._pending_drift_az is not None and abs(drift_az - self._pending_drift_az) < stability_tolerance:
+            self._stable_drift_count += 1
+        else:
+            self._pending_drift_az = drift_az
+            self._stable_drift_count = 1
+
+        if self._stable_drift_count >= required_stable_frames:
+            self._last_drift_az = drift_az
+            self._pending_drift_az = None
+            self._stable_drift_count = 0
+            return drift_az
+
+        logger.debug(
+            "Vision glitch rejected (delta=%.1f°, stable=%d/%d)",
+            delta, self._stable_drift_count, required_stable_frames,
+        )
+        return None
+
     # ---- Mode management (thread-safe) ----------------------------------
     def on_mode_changed(self, value: str):
         """Handle mode change from GUI segmented button."""
         with self._lock:
             self._mode = value
-        logger.info("Mode changed to: %s", value)
+        logger.info("Mode changed to %s", value)
 
     @property
     def mode(self) -> str:
@@ -322,7 +515,18 @@ class ArgusController:
 
             current_mode = self.mode
 
-            if current_mode == "AUTO-SLAVE":
+            # -- Health check (cyclic) ------------------------------------
+            health = self.check_system_health()
+            if health == HEALTH_CRITICAL and current_mode == "AUTO-SLAVE":
+                logger.critical("CRITICAL: ASCOM or Serial lost – stopping motors")
+                if self.serial:
+                    try:
+                        self.serial.stop_motor()
+                    except Exception:
+                        pass
+                self.sensor.slew_rate = 0.0
+
+            if current_mode == "AUTO-SLAVE" and health != HEALTH_CRITICAL:
                 # Step 1 – telescope position
                 telescope_data = None
                 if self.ascom:
@@ -337,9 +541,10 @@ class ArgusController:
                         dec=telescope_data["dec"],
                         side_of_pier=telescope_data.get("side_of_pier"),
                     )
+                    target_az = normalize_azimuth(target_az)
 
-                    # Step 3 – vision drift correction
-                    if drift_enabled and self.vision:
+                    # Step 3 – vision drift correction (only if HEALTHY)
+                    if drift_enabled and self.vision and health == HEALTH_HEALTHY:
                         frame = self.vision.capture_frame()
                         if frame is not None:
                             markers = self.vision.detect_markers(frame)
@@ -354,14 +559,21 @@ class ArgusController:
                                     markers, expected
                                 )
                                 if drift:
-                                    # Step 4 – corrected target angle
-                                    target_az = (
+                                    corrected = (
                                         self.math_utils.apply_drift_correction(
                                             target_az, drift
                                         )
                                     )
+                                    corrected = normalize_azimuth(corrected)
+                                    # Outlier rejection
+                                    accepted = self._filter_drift(corrected)
+                                    if accepted is not None:
+                                        target_az = accepted
 
-                    # Step 5 – send MOVE command if error exceeds threshold
+                    elif health == HEALTH_DEGRADED:
+                        logger.warning("Vision contact lost – running in blind mode (math only)")
+
+                    # Step 5 – send MOVE command with hysteresis
                     dome_az = self.sensor.get_azimuth()
                     error = abs(target_az - dome_az)
                     if error > 180:
@@ -391,6 +603,7 @@ class ArgusController:
                 else:
                     vision_ok = False
                 if self._last_vision_ok and not vision_ok:
+                    logger.warning("Vision contact lost")
                     if self.voice:
                         self.voice.say("Visual contact lost")
             self._last_vision_ok = vision_ok
@@ -428,11 +641,15 @@ class ArgusController:
 
 
 def main():
-    """Main entry point."""
-    config = load_config()
-    controller = ArgusController(config)
-    controller.app.mainloop()
-    controller.shutdown()
+    """Main entry point with global exception handler."""
+    try:
+        config = load_config()
+        controller = ArgusController(config)
+        controller.app.mainloop()
+        controller.shutdown()
+    except Exception:
+        logger.critical("Unhandled exception – shutting down", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
