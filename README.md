@@ -18,6 +18,7 @@ ARGUS/
 ├── src/
 │   ├── __init__.py           # Package initialization
 │   ├── main.py               # Main application entry point
+│   ├── gui.py                # customtkinter GUI (Dark Mode)
 │   ├── ascom_handler.py      # ASCOM telescope communication
 │   ├── vision.py             # ArUco marker detection and tracking
 │   ├── serial_ctrl.py        # Arduino serial communication
@@ -143,6 +144,7 @@ argus --config /path/to/custom_config.yaml
 - **vision.py**: Manages camera input and ArUco marker detection
 - **serial_ctrl.py**: Controls Arduino via serial commands
 - **math_utils.py**: Performs all astronomical and geometric calculations
+- **gui.py**: Dark-mode GUI built with customtkinter (telemetry, status, controls, mode selector)
 - **main.py**: Integrates all components in a closed-loop control system
 
 ### Key Features
