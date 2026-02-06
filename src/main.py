@@ -358,7 +358,7 @@ class ArgusController:
             for key in ("latitude", "longitude", "elevation"):
                 mount_val = site.get(key, 0.0)
                 cfg_val = obs.get(key, 0.0)
-                if mount_val and (cfg_val == 0.0 or abs(mount_val - cfg_val) > 1e-4):
+                if mount_val is not None and (cfg_val == 0.0 or abs(mount_val - cfg_val) > 1e-4):
                     obs[key] = mount_val
                     changed = True
             if changed:

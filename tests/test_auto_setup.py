@@ -230,6 +230,17 @@ class TestOffsetSolver:
         az = OffsetSolver._predicted_dome_az(90, 45, 0.0, 0.0, 1.5)
         assert 0 <= az < 360
 
+    def test_solve_with_exactly_3_points(self):
+        """Three points is the minimum for three unknowns."""
+        from calibration import OffsetSolver
+
+        solver = OffsetSolver()
+        for az in (0, 90, 180):
+            predicted = OffsetSolver._predicted_dome_az(az, 45, 0.0, 0.0, 1.5)
+            solver.add_point(az, 45, predicted)
+        result = solver.solve()
+        assert result is not None
+
 
 # ---------------------------------------------------------------------------
 # safe_slew_dome (unit-level)
