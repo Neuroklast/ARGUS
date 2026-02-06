@@ -20,8 +20,7 @@ flask>=3.0
 pyyaml>=6.0
 
 # GUI
-flet>=0.80.0
-flet-desktop>=0.80.0
+flet[all]>=0.80.0
 
 # Text-to-Speech
 pyttsx3>=2.90
