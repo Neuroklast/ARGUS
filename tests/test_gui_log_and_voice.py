@@ -143,6 +143,10 @@ class TestVoiceEnglish:
 class TestSettingsGuiExtended:
     """Verify the extended save logic handles new config keys."""
 
+    def test_to_int_valid_string(self):
+        from settings_gui import SettingsWindow
+        assert SettingsWindow._to_int("42", 10) == 42
+
     def test_to_int_with_float_string(self):
         from settings_gui import SettingsWindow
         # int("3.14") would raise ValueError, so default should be used
@@ -151,6 +155,10 @@ class TestSettingsGuiExtended:
     def test_to_float_with_negative(self):
         from settings_gui import SettingsWindow
         assert SettingsWindow._to_float("-1.5", 0.0) == pytest.approx(-1.5)
+
+    def test_to_float_invalid_string(self):
+        from settings_gui import SettingsWindow
+        assert SettingsWindow._to_float("not_a_number", 5.0) == 5.0
 
     def test_aruco_dictionaries_list(self):
         from settings_gui import ARUCO_DICTIONARIES

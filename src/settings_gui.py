@@ -102,7 +102,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.entry_baud_rate.grid(row=1, column=1, sticky="ew", padx=8, pady=6)
 
     def _build_vision_tab(self):
-        """Vision tab: camera_index, marker_size, resolution, aruco dictionary."""
+        """Vision tab: camera_index, marker_size, resolution, ArUco dictionary."""
         tab = self.tabview.add("Vision")
         tab.grid_columnconfigure(1, weight=1)
 

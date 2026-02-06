@@ -49,7 +49,7 @@ class VoiceAssistant:
                     self._engine.setProperty('voice', voice.id)
                     logger.info("English voice selected: %s", voice.name)
                     return
-            logger.warning("No English voice found – using system default")
+            logger.warning("No English voice found - using system default")
         except Exception as exc:
             logger.warning("Could not set English voice: %s", exc)
 
