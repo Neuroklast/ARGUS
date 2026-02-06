@@ -48,6 +48,11 @@ try:
 except ImportError:                     # pragma: no cover
     VoiceAssistant = None               # type: ignore[assignment,misc]
 
+try:
+    from calibration import OffsetSolver
+except ImportError:                     # pragma: no cover
+    OffsetSolver = None                 # type: ignore[assignment,misc]
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
@@ -90,6 +95,11 @@ DEFAULT_CONFIG: dict = {
         "level": "INFO",
         "file": "argus.log",
         "console": True,
+    },
+    "safety": {
+        "telescope_protrudes": True,
+        "safe_altitude": 90.0,
+        "max_nudge_while_protruding": 2.0,
     },
 }
 
@@ -176,6 +186,26 @@ def load_config(path: Optional[str] = None) -> dict:
         return dict(DEFAULT_CONFIG)
 
 
+def save_config(config: dict, path: Optional[str] = None) -> None:
+    """Write the configuration dictionary back to a YAML file.
+
+    Uses ``yaml.dump`` with ``default_flow_style=False`` for a clean,
+    human-readable output.
+
+    Args:
+        config: Configuration dictionary to persist.
+        path:   Destination file.  Defaults to ``config.yaml`` in the
+                repository root.
+    """
+    config_path = Path(path) if path else DEFAULT_CONFIG_PATH
+    try:
+        with open(config_path, "w") as fh:
+            yaml.dump(config, fh, default_flow_style=False, sort_keys=False)
+        logger.info("Configuration saved to %s", config_path)
+    except Exception as exc:
+        logger.error("Failed to save configuration: %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Normalisation helper
 # ---------------------------------------------------------------------------
@@ -230,7 +260,9 @@ class ArgusController:
         self.math_utils = None
 
         self._init_math_utils()
+        self._auto_setup_ascom()
         self._init_ascom()
+        self._sync_site_data()
         self._init_serial()
         self._init_vision()
         self._init_voice()
@@ -294,6 +326,48 @@ class ArgusController:
         except Exception as exc:
             logger.error("Failed to initialize MathUtils: %s", exc)
 
+    def _auto_setup_ascom(self):
+        """Prompt the user to choose an ASCOM telescope if none is configured."""
+        if ASCOMHandler is None:
+            return
+        ascom_cfg = self.config.get("ascom", {})
+        prog_id = ascom_cfg.get("telescope_prog_id", "")
+        default_id = DEFAULT_CONFIG["ascom"]["telescope_prog_id"]
+        if not prog_id or prog_id == default_id:
+            logger.info("No custom telescope configured – launching chooser")
+            try:
+                chosen = ASCOMHandler.choose_device(prog_id or default_id)
+            except Exception as exc:
+                logger.warning("ASCOM chooser failed: %s", exc)
+                return
+            if chosen:
+                self.config.setdefault("ascom", {})["telescope_prog_id"] = chosen
+                save_config(self.config)
+                logger.info("Telescope ProgID set to %s", chosen)
+
+    def _sync_site_data(self):
+        """Sync observatory coordinates from the mount if available."""
+        if self.ascom is None:
+            return
+        try:
+            site = self.ascom.get_site_data()
+            if site is None:
+                return
+            obs = self.config.get("math", {}).get("observatory", {})
+            changed = False
+            for key in ("latitude", "longitude", "elevation"):
+                mount_val = site.get(key, 0.0)
+                cfg_val = obs.get(key, 0.0)
+                if mount_val and (cfg_val == 0.0 or abs(mount_val - cfg_val) > 1e-4):
+                    obs[key] = mount_val
+                    changed = True
+            if changed:
+                self.config.setdefault("math", {})["observatory"] = obs
+                save_config(self.config)
+                logger.info("Synced observatory location from mount GPS")
+        except Exception as exc:
+            logger.warning("Could not sync site data from mount: %s", exc)
+
     def _init_ascom(self):
         if ASCOMHandler is None:
             logger.warning("ASCOM module not available – skipping telescope")
@@ -350,8 +424,26 @@ class ArgusController:
                 marker_size=aruco_cfg.get("marker_size", 0.05),
             )
             if not self.vision.open_camera():
-                logger.warning("Camera not found – vision system disabled")
-                self.vision = None
+                logger.warning(
+                    "Configured camera not found. Scanning..."
+                )
+                found = VisionSystem.find_working_camera()
+                if found is not None:
+                    self.config.setdefault("vision", {})["camera_index"] = found
+                    self.vision = VisionSystem(
+                        camera_index=found,
+                        resolution=(res.get("width", 1280), res.get("height", 720)),
+                        aruco_dict=aruco_cfg.get("dictionary", "DICT_4X4_50"),
+                        marker_size=aruco_cfg.get("marker_size", 0.05),
+                    )
+                    if self.vision.open_camera():
+                        save_config(self.config)
+                        logger.info("Auto-discovered camera at index %d", found)
+                    else:
+                        self.vision = None
+                else:
+                    logger.warning("No working camera found – vision disabled")
+                    self.vision = None
         except Exception as exc:
             logger.error("Failed to initialize VisionSystem: %s", exc)
             self.vision = None
@@ -619,6 +711,116 @@ class ArgusController:
                 pass
 
             time.sleep(interval)
+
+    # ---- Safe dome slewing (collision avoidance) --------------------------
+    def safe_slew_dome(self, target_dome_az: float) -> None:
+        """Slew the dome to *target_dome_az* while avoiding telescope collision.
+
+        When ``safety.telescope_protrudes`` is ``True`` and the required
+        rotation exceeds ``max_nudge_while_protruding``, the telescope is
+        first parked at the safe altitude before the dome rotates.
+        """
+        safety = self.config.get("safety", {})
+        protrudes = safety.get("telescope_protrudes", False)
+        safe_alt = safety.get("safe_altitude", 90.0)
+        max_nudge = safety.get("max_nudge_while_protruding", 2.0)
+
+        dome_az = self.sensor.get_azimuth()
+        delta = abs(target_dome_az - dome_az)
+        if delta > 180:
+            delta = 360 - delta
+
+        if protrudes and delta > max_nudge:
+            # Step 1 – Park telescope at safe altitude
+            if self.ascom and hasattr(self.ascom, "telescope") and self.ascom.telescope:
+                try:
+                    self.ascom.telescope.SlewToAltAz(dome_az, safe_alt)
+                    while self.ascom.telescope.Slewing:
+                        time.sleep(0.5)
+                except Exception as exc:
+                    logger.warning("Failed to park telescope: %s", exc)
+
+            # Step 2 – Slew dome
+            if self.serial:
+                self.serial.move_to_azimuth(target_dome_az, 50)
+            self.sensor.target_azimuth = target_dome_az
+            # Wait for dome (simulation)
+            for _ in range(200):
+                curr = self.sensor.get_azimuth()
+                if abs(curr - target_dome_az) < 1.0:
+                    break
+                time.sleep(0.1)
+        else:
+            # Small correction – move dome directly
+            if self.serial:
+                self.serial.move_to_azimuth(target_dome_az, 50)
+            self.sensor.target_azimuth = target_dome_az
+
+    # ---- Calibration mode -----------------------------------------------
+    def run_calibration(self) -> Optional[dict]:
+        """Run a 4-point calibration sequence and solve mount offsets.
+
+        Drives the telescope/dome to four cardinal directions at 45° altitude,
+        uses ``safe_slew_dome`` for collision avoidance, then solves for
+        the best-fit GEM offsets.
+
+        Returns:
+            Dictionary with solved offsets, or ``None`` on failure.
+        """
+        if OffsetSolver is None:
+            logger.error("Calibration module not available")
+            return None
+        if self.ascom is None:
+            logger.error("ASCOM required for calibration")
+            return None
+
+        solver = OffsetSolver()
+        cal_points = [
+            (0.0, 45.0),    # North
+            (90.0, 45.0),   # East
+            (180.0, 45.0),  # South
+            (270.0, 45.0),  # West
+        ]
+
+        old_mode = self.mode
+        with self._lock:
+            self._mode = "CALIBRATION"
+
+        try:
+            for az, alt in cal_points:
+                # Park telescope, then slew dome
+                self.safe_slew_dome(az)
+
+                # Slew telescope to target alt/az
+                if hasattr(self.ascom, "telescope") and self.ascom.telescope:
+                    try:
+                        self.ascom.telescope.SlewToAltAz(az, alt)
+                        while self.ascom.telescope.Slewing:
+                            time.sleep(0.5)
+                    except Exception as exc:
+                        logger.warning("Telescope slew failed at az=%s: %s", az, exc)
+                        continue
+
+                # Vision check – get dome slit az from sensor
+                dome_az = self.sensor.get_azimuth()
+                solver.add_point(az, alt, dome_az)
+                logger.info(
+                    "Calibration point: tel_az=%.1f, tel_alt=%.1f, dome_az=%.1f",
+                    az, alt, dome_az,
+                )
+
+            result = solver.solve()
+            if result is not None:
+                mount = self.config.setdefault("math", {}).setdefault("mount", {})
+                mount["gem_offset_east"] = result["gem_offset_east"]
+                mount["gem_offset_north"] = result["gem_offset_north"]
+                mount["pier_height"] = result["pier_height"]
+                save_config(self.config)
+                logger.info("Calibration complete – offsets saved: %s", result)
+            return result
+        finally:
+            with self._lock:
+                self._mode = old_mode
 
     # ---- Cleanup --------------------------------------------------------
     def shutdown(self):

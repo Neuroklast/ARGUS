@@ -204,3 +204,50 @@ class VisionSystem:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
         return output
+
+    # ---- Camera auto-discovery ------------------------------------------
+    @classmethod
+    def find_working_camera(cls, max_indices: int = 5) -> Optional[int]:
+        """Scan camera indices and return the first working one.
+
+        Prioritises a camera where an ArUco marker is immediately detected.
+
+        Args:
+            max_indices: Number of indices to probe (0 … max_indices-1).
+
+        Returns:
+            Camera index of a working camera, or ``None``.
+        """
+        logger = logging.getLogger(__name__)
+        first_working: Optional[int] = None
+
+        aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+        params = cv2.aruco.DetectorParameters()
+        detector = cv2.aruco.ArucoDetector(aruco_dict, params)
+
+        for idx in range(max_indices):
+            cap = cv2.VideoCapture(idx)
+            if not cap.isOpened():
+                cap.release()
+                continue
+            ret, frame = cap.read()
+            cap.release()
+            if not ret or frame is None:
+                continue
+
+            if first_working is None:
+                first_working = idx
+
+            # Try ArUco detection – prefer cameras that immediately see a marker
+            try:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                corners, ids, _ = detector.detectMarkers(gray)
+                if ids is not None and len(ids) > 0:
+                    logger.info("Camera %d has ArUco marker – preferred", idx)
+                    return idx
+            except Exception:
+                pass
+
+        if first_working is not None:
+            logger.info("Using first working camera at index %d", first_working)
+        return first_working

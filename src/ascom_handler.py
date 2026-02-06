@@ -177,3 +177,47 @@ class ASCOMHandler:
             'side_of_pier': side_of_pier,
             'tracking': tracking
         }
+
+    # ---- Site data from mount ------------------------------------------
+    def get_site_data(self) -> Optional[Dict[str, float]]:
+        """Read observatory coordinates from the mount.
+
+        Returns:
+            Dictionary with ``latitude``, ``longitude`` and ``elevation``
+            or ``None`` on error.
+        """
+        if not self.connected or self.telescope is None:
+            return None
+        try:
+            lat = self.telescope.SiteLatitude
+            lon = self.telescope.SiteLongitude
+            try:
+                elev = self.telescope.SiteElevation
+            except Exception:
+                elev = 0.0
+            return {"latitude": lat, "longitude": lon, "elevation": elev}
+        except Exception as exc:
+            self.logger.warning("Could not read site data: %s", exc)
+            return None
+
+    # ---- ASCOM device chooser ------------------------------------------
+    @staticmethod
+    def choose_device(current_id: str = "") -> Optional[str]:
+        """Show the ASCOM device chooser dialog.
+
+        Args:
+            current_id: The currently configured ProgID (pre-selected).
+
+        Returns:
+            The chosen ProgID string, or ``None`` if the user cancelled.
+        """
+        if not ASCOM_AVAILABLE:
+            return None
+        try:
+            chooser = win32com.client.Dispatch("ASCOM.Utilities.Chooser")
+            chooser.DeviceType = "Telescope"
+            chosen = chooser.Choose(current_id)
+            return chosen if chosen else None
+        except Exception as exc:
+            logging.getLogger(__name__).warning("ASCOM chooser error: %s", exc)
+            return None
