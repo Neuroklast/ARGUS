@@ -126,7 +126,7 @@ class SerialController:
             self.logger.critical("Serial reconnect failed – command lost")
             return False
         except Exception as e:
-            self.logger.error(f"Error sending command: {e}")
+            self.logger.error("Error sending command: %s", e)
             return False
 
     def read_response(self, max_lines: int = 1) -> Optional[str]:
@@ -153,16 +153,16 @@ class SerialController:
 
             if lines:
                 response = '\n'.join(lines)
-                self.logger.debug(f"Received response: {response}")
+                self.logger.debug("Received response: %s", response)
                 return response
             return None
         except serial.SerialException as e:
-            self.logger.error(f"Serial IO error reading response: {e}")
+            self.logger.error("Serial IO error reading response: %s", e)
             self.connected = False
             self._attempt_reconnect()
             return None
         except Exception as e:
-            self.logger.error(f"Error reading response: {e}")
+            self.logger.error("Error reading response: %s", e)
             return None
 
     def send_and_receive(self, command: str, timeout: float = 1.0) -> Optional[str]:

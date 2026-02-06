@@ -51,8 +51,9 @@ class MathUtils:
         self.gem_offset_north = gem_offset_north
         
         self.logger.info(
-            f"MathUtils initialized: lat={latitude}, lon={longitude}, "
-            f"dome_r={dome_radius}m, pier_h={pier_height}m"
+            "MathUtils initialized: lat=%s, lon=%s, "
+            "dome_r=%sm, pier_h=%sm",
+            latitude, longitude, dome_radius, pier_height,
         )
     
     def ra_dec_to_altaz(self, ra: float, dec: float, 
@@ -179,8 +180,8 @@ class MathUtils:
         dome_azimuth = self.calculate_dome_azimuth(telescope_vec)
         
         self.logger.debug(
-            f"RA={ra}h, Dec={dec}°, Alt={altitude:.2f}°, Az={azimuth:.2f}° "
-            f"-> Dome Az={dome_azimuth:.2f}°"
+            "RA=%sh, Dec=%s°, Alt=%.2f°, Az=%.2f° -> Dome Az=%.2f°",
+            ra, dec, altitude, azimuth, dome_azimuth,
         )
         
         return dome_azimuth
@@ -209,8 +210,8 @@ class MathUtils:
         corrected_azimuth = (target_azimuth + angular_drift) % 360
         
         self.logger.debug(
-            f"Drift correction: {angular_drift:.3f}° "
-            f"({target_azimuth:.2f}° -> {corrected_azimuth:.2f}°)"
+            "Drift correction: %.3f° (%.2f° -> %.2f°)",
+            angular_drift, target_azimuth, corrected_azimuth,
         )
         
         return corrected_azimuth
