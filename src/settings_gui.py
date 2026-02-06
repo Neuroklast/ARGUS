@@ -89,6 +89,65 @@ def show_settings_dialog(
     tf_baud_rate = ft.TextField(label="Baud Rate",
                                  value=str(hw.get("baud_rate", 9600)))
 
+    # Motor type
+    dd_motor_type = ft.Dropdown(
+        label="Motor Type",
+        options=[
+            ft.dropdown.Option("stepper", "Stepper Motor"),
+            ft.dropdown.Option("encoder", "DC Motor with Encoder"),
+            ft.dropdown.Option("timed", "Time-based (Relay)"),
+        ],
+        value=str(hw.get("motor_type", "stepper")),
+    )
+
+    # Protocol
+    dd_protocol = ft.Dropdown(
+        label="Communication Protocol",
+        options=[
+            ft.dropdown.Option("argus", "ARGUS Native"),
+            ft.dropdown.Option("lesvedome", "LesveDome Standard"),
+            ft.dropdown.Option("relay", "Relay Control"),
+        ],
+        value=str(hw.get("protocol", "argus")),
+    )
+
+    # Drive-specific calibration
+    tf_steps_per_degree = ft.TextField(
+        label="Steps per Degree (Stepper)",
+        value=str(hw.get("steps_per_degree", 100.0)),
+    )
+    tf_ticks_per_degree = ft.TextField(
+        label="Ticks per Degree (Encoder)",
+        value=str(hw.get("ticks_per_degree", 50.0)),
+    )
+    tf_degrees_per_second = ft.TextField(
+        label="Degrees per Second (Timed)",
+        value=str(hw.get("degrees_per_second", 5.0)),
+    )
+    tf_encoder_tolerance = ft.TextField(
+        label="Encoder Tolerance (°)",
+        value=str(hw.get("encoder_tolerance", 0.5)),
+    )
+
+    # Homing configuration
+    homing = hw.get("homing", {})
+    sw_homing_enabled = ft.Switch(
+        label="Homing Switch Installed",
+        value=homing.get("enabled", False),
+    )
+    tf_homing_azimuth = ft.TextField(
+        label="Home Switch Azimuth (°)",
+        value=str(homing.get("azimuth", 0.0)),
+    )
+    dd_homing_direction = ft.Dropdown(
+        label="Homing Search Direction",
+        options=[
+            ft.dropdown.Option("CW", "Clockwise"),
+            ft.dropdown.Option("CCW", "Counter-Clockwise"),
+        ],
+        value=str(homing.get("direction", "CW")),
+    )
+
     # -- Vision tab fields ---
     dd_camera_index = ft.Dropdown(
         label="Camera Index",
@@ -166,6 +225,10 @@ def show_settings_dialog(
         tabs=[
             ft.Tab(text="Hardware", content=ft.Column([
                 tf_serial_port, tf_baud_rate,
+                dd_motor_type, dd_protocol,
+                tf_steps_per_degree, tf_ticks_per_degree,
+                tf_degrees_per_second, tf_encoder_tolerance,
+                sw_homing_enabled, tf_homing_azimuth, dd_homing_direction,
             ], spacing=8, scroll=ft.ScrollMode.AUTO)),
             ft.Tab(text="Vision", content=ft.Column([
                 dd_camera_index, tf_marker_size,
@@ -199,6 +262,26 @@ def show_settings_dialog(
         new_cfg.setdefault("hardware", {})
         new_cfg["hardware"]["serial_port"] = tf_serial_port.value
         new_cfg["hardware"]["baud_rate"] = _to_int(tf_baud_rate.value, 9600)
+        new_cfg["hardware"]["motor_type"] = dd_motor_type.value
+        new_cfg["hardware"]["protocol"] = dd_protocol.value
+        new_cfg["hardware"]["steps_per_degree"] = _to_float(
+            tf_steps_per_degree.value, 100.0
+        )
+        new_cfg["hardware"]["ticks_per_degree"] = _to_float(
+            tf_ticks_per_degree.value, 50.0
+        )
+        new_cfg["hardware"]["degrees_per_second"] = _to_float(
+            tf_degrees_per_second.value, 5.0
+        )
+        new_cfg["hardware"]["encoder_tolerance"] = _to_float(
+            tf_encoder_tolerance.value, 0.5
+        )
+        new_cfg["hardware"].setdefault("homing", {})
+        new_cfg["hardware"]["homing"]["enabled"] = sw_homing_enabled.value
+        new_cfg["hardware"]["homing"]["azimuth"] = _to_float(
+            tf_homing_azimuth.value, 0.0
+        )
+        new_cfg["hardware"]["homing"]["direction"] = dd_homing_direction.value
 
         # Vision
         new_cfg.setdefault("vision", {})

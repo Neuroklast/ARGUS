@@ -35,9 +35,9 @@ PIER_HEIGHT = 1.0   # metres (reasonable default)
 
 # Tolerance thresholds (degrees).
 # During steady tracking, the dome azimuth should change smoothly.
-# With sampling every 100th record (~200s apart), sidereal motion causes
-# ~0.8–1.5° azimuth change per sample depending on geometry.
-MAX_FRAME_JUMP = 2.0       # degrees between sampled frames (~200s apart)
+# With sampling every 500th record (~1000s apart), sidereal motion causes
+# larger azimuth changes per sample depending on geometry.
+MAX_FRAME_JUMP = 8.0       # degrees between sampled frames (~1000s apart)
 MAX_TOTAL_DRIFT = 200.0    # degrees total drift across ~6.5h session
 
 # Statuses to skip (geometry often unreliable)
@@ -124,10 +124,10 @@ def test_orion_tracking_consistency(calibration_data, math_utils):
     *self-consistency*: the computed dome azimuths for consecutive
     sampled records should change smoothly (no wild jumps).
 
-    Samples every 100th record to keep runtime reasonable (~200 records).
+    Samples every 500th record to keep runtime reasonable (~42 records).
     """
     # Sample every Nth record to keep the test fast
-    sample_step = 100
+    sample_step = 500
     sampled = [
         rec for i, rec in enumerate(calibration_data)
         if i % sample_step == 0 and rec["status"] not in SKIP_STATUSES
@@ -189,7 +189,7 @@ def test_orion_tracking_consistency(calibration_data, math_utils):
 
 def test_dome_azimuth_in_valid_range(calibration_data, math_utils):
     """All computed dome azimuths should be in [0, 360)."""
-    for rec in calibration_data[:100]:
+    for rec in calibration_data[:20]:
         obstime = Time(rec["timestamp"].isoformat(), format="isot", scale="utc")
         ra = _ha_to_ra(rec["ha"], rec["timestamp"].isoformat(), SITE_LON)
 

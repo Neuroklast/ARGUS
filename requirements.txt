@@ -13,6 +13,9 @@ scipy>=1.11.0
 # Hardware communication
 pyserial>=3.5
 
+# ASCOM Alpaca server
+flask>=3.0
+
 # Configuration management
 pyyaml>=6.0
 
