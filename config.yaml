@@ -25,6 +25,16 @@ hardware:
   serial_port: "COM3"  # Arduino serial port
   baud_rate: 9600
   timeout: 1.0  # seconds
+  motor_type: "stepper"  # stepper | encoder | timed
+  protocol: "argus"      # argus | lesvedome | relay
+  steps_per_degree: 100.0    # Stepper calibration
+  ticks_per_degree: 50.0     # Encoder calibration
+  degrees_per_second: 5.0    # Timed motor speed
+  encoder_tolerance: 0.5     # Encoder deadband (degrees)
+  homing:
+    enabled: false
+    azimuth: 0.0        # Home switch position (degrees)
+    direction: "CW"     # Search direction: CW or CCW
   
 # Mathematical Calculations
 math:

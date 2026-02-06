@@ -58,6 +58,17 @@ except ImportError:                     # pragma: no cover
     OffsetSolver = None                 # type: ignore[assignment,misc]
 
 try:
+    from dome_drivers import create_driver, DomeDriver
+except ImportError:                     # pragma: no cover
+    create_driver = None                # type: ignore[assignment,misc]
+    DomeDriver = None                   # type: ignore[assignment,misc]
+
+try:
+    from alpaca_server import AlpacaDomeServer
+except ImportError:                     # pragma: no cover
+    AlpacaDomeServer = None             # type: ignore[assignment,misc]
+
+try:
     from data_loader import load_calibration_data
 except ImportError:                     # pragma: no cover
     load_calibration_data = None        # type: ignore[assignment,misc]
@@ -114,6 +125,17 @@ DEFAULT_CONFIG: dict = {
         "serial_port": "COM3",
         "baud_rate": 9600,
         "timeout": 1.0,
+        "motor_type": "stepper",
+        "protocol": "argus",
+        "steps_per_degree": 100.0,
+        "ticks_per_degree": 50.0,
+        "degrees_per_second": 5.0,
+        "encoder_tolerance": 0.5,
+        "homing": {
+            "enabled": False,
+            "azimuth": 0.0,
+            "direction": "CW",
+        },
     },
     "math": {
         "observatory": {"latitude": 51.5074, "longitude": -0.1278, "elevation": 0},
@@ -278,6 +300,10 @@ class ArgusController:
         self._last_vision_ok: bool = True
         self._health: str = HEALTH_HEALTHY
 
+        # -- Alpaca / slaving state --------------------------------------
+        self.is_slaved: bool = False
+        self._is_parked: bool = False
+
         # -- Outlier rejection state -------------------------------------
         self._last_drift_az: Optional[float] = None
         self._stable_drift_count: int = 0
@@ -309,6 +335,7 @@ class ArgusController:
         self._init_ascom()
         self._sync_site_data()
         self._init_serial()
+        self._init_dome_driver()
         self._init_vision()
         self._init_voice()
 
@@ -509,6 +536,75 @@ class ArgusController:
             self.voice = VoiceAssistant()
         except Exception as exc:
             logger.error("Failed to initialize VoiceAssistant: %s", exc)
+
+    def _init_dome_driver(self):
+        """Create the dome driver from the current configuration."""
+        self.dome_driver = None
+        if create_driver is None:
+            logger.warning("Dome drivers module not available – skipping")
+            return
+        try:
+            self.dome_driver = create_driver(self.config, self.serial)
+        except Exception as exc:
+            logger.error("Failed to initialize dome driver: %s", exc)
+
+    # ---- Alpaca-facing properties / dome commands -------------------------
+    @property
+    def current_azimuth(self) -> float:
+        """Current dome azimuth in degrees [0, 360)."""
+        if self.dome_driver is not None:
+            return self.dome_driver.position
+        return self.sensor.get_azimuth()
+
+    @property
+    def is_slewing(self) -> bool:
+        """``True`` while the dome is actively moving."""
+        if self.dome_driver is not None:
+            return self.dome_driver.slewing
+        return abs(self.sensor.slew_rate) > 1e-6
+
+    @property
+    def is_parked(self) -> bool:
+        return self._is_parked
+
+    def move_dome(self, target_az: float) -> None:
+        """Command the dome to slew to *target_az* (degrees)."""
+        target_az = normalize_azimuth(target_az)
+        self._is_parked = False
+        speed = self.config.get("control", {}).get("max_speed", 100)
+        if self.dome_driver is not None:
+            self.dome_driver.slew_to(target_az, speed)
+        elif self.serial:
+            self.serial.move_to_azimuth(target_az, speed)
+        self.sensor.target_azimuth = target_az
+        logger.info("Move dome to %.1f°", target_az)
+
+    def stop_dome(self) -> None:
+        """Immediately stop any dome movement."""
+        if self.dome_driver is not None:
+            self.dome_driver.abort()
+        if self.serial:
+            self.serial.stop_motor()
+        self.sensor.slew_rate = 0.0
+        logger.info("Dome stopped")
+
+    def park_dome(self) -> None:
+        """Park the dome at azimuth 0° (north)."""
+        self.move_dome(0.0)
+        self._is_parked = True
+        logger.info("Dome parking at 0°")
+
+    def home_dome(self) -> None:
+        """Run a homing (reference) sequence using config parameters."""
+        homing = self.config.get("hardware", {}).get("homing", {})
+        if not homing.get("enabled", False):
+            logger.warning("Homing is not enabled in configuration")
+            return
+        home_az = homing.get("azimuth", 0.0)
+        direction = homing.get("direction", "CW")
+        if self.dome_driver is not None:
+            self.dome_driver.home(home_az, direction)
+        logger.info("Homing complete – position set to %.1f°", home_az)
 
     def _update_indicators(self):
         """Push current hardware status to the GUI indicator badges."""
@@ -938,6 +1034,11 @@ class ArgusController:
     def shutdown(self):
         """Release all hardware resources and stop the control loop."""
         self._running = False
+        if hasattr(self, '_alpaca') and self._alpaca:
+            try:
+                self._alpaca.shutdown()
+            except Exception:
+                pass
         if self.ascom:
             try:
                 self.ascom.disconnect()
@@ -977,6 +1078,15 @@ def main(page: ft.Page):
     except Exception:
         logger.critical("Unhandled exception – shutting down", exc_info=True)
         sys.exit(1)
+
+    # Start ASCOM Alpaca server (if available)
+    alpaca = None
+    if AlpacaDomeServer is not None:
+        try:
+            alpaca = AlpacaDomeServer(controller)
+            alpaca.start()
+        except Exception as exc:
+            logger.warning("Failed to start Alpaca server: %s", exc)
 
 
 if __name__ == "__main__":
