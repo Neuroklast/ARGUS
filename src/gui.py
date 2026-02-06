@@ -127,7 +127,7 @@ class ArgusGUI:
                 ft.Segment(value="AUTO-SLAVE", label=ft.Text("AUTO-SLAVE")),
                 ft.Segment(value="CALIBRATE", label=ft.Text("CALIBRATE")),
             ],
-            selected={"MANUAL"},
+            selected=["MANUAL"],
             allow_multiple_selection=False,
         )
 
