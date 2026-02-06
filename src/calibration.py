@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Calibration Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 Provides an OffsetSolver that computes mount GEM offsets (east, north)
 and pier height from a set of measured calibration points using
 scipy.optimize.least_squares.

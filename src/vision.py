@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Vision Processing Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 This module handles USB webcam input and ArUco marker detection
 for drift correction in the dome slaving system.
 """
@@ -61,7 +64,7 @@ class VisionSystem:
         self.aruco_params = cv2.aruco.DetectorParameters()
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
         
-        self.logger.info(f"Vision system initialized with {aruco_dict}")
+        self.logger.info("Vision system initialized with %s", aruco_dict)
     
     def open_camera(self) -> bool:
         """
@@ -73,7 +76,7 @@ class VisionSystem:
         try:
             self.cap = cv2.VideoCapture(self.camera_index)
             if not self.cap.isOpened():
-                self.logger.error(f"Failed to open camera {self.camera_index}")
+                self.logger.error("Failed to open camera %d", self.camera_index)
                 return False
             
             # Set resolution
@@ -81,10 +84,10 @@ class VisionSystem:
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
             
             self.camera_open = True
-            self.logger.info(f"Camera {self.camera_index} opened successfully")
+            self.logger.info("Camera %d opened successfully", self.camera_index)
             return True
         except Exception as e:
-            self.logger.error(f"Error opening camera: {e}")
+            self.logger.error("Error opening camera: %s", e)
             return False
     
     def close_camera(self) -> None:
@@ -151,7 +154,7 @@ class VisionSystem:
                 'frame_shape': frame.shape
             }
         except Exception as e:
-            self.logger.error(f"Error detecting markers: {e}")
+            self.logger.error("Error detecting markers: %s", e)
             return None
     
     def calculate_drift(self, marker_data: Dict, expected_center: Tuple[float, float]) -> Optional[Tuple[float, float]]:

@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Settings GUI Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 Provides a CTkToplevel settings window for editing config.yaml
 without manual file editing.
 """
@@ -13,9 +16,11 @@ from typing import Optional
 import yaml
 import customtkinter as ctk
 
+from path_utils import get_base_path
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+DEFAULT_CONFIG_PATH = get_base_path() / "config.yaml"
 
 
 class SettingsWindow(ctk.CTkToplevel):

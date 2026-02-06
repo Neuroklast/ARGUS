@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Serial Control Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 This module handles communication with Arduino for motor control
 via pyserial.  Includes automatic reconnection on IO errors.
 """
@@ -42,7 +45,7 @@ class SerialController:
             True if successful, False otherwise
         """
         try:
-            self.logger.info(f"Connecting to serial port {self.port}")
+            self.logger.info("Connecting to serial port %s", self.port)
             self.ser = serial.Serial(
                 port=self.port,
                 baudrate=self.baud_rate,
@@ -53,14 +56,14 @@ class SerialController:
             time.sleep(2)
 
             self.connected = True
-            self.logger.info(f"Serial port {self.port} connected successfully")
+            self.logger.info("Serial port %s connected successfully", self.port)
             return True
         except serial.SerialException as e:
-            self.logger.error(f"Failed to connect to serial port: {e}")
+            self.logger.error("Failed to connect to serial port: %s", e)
             self.connected = False
             return False
         except Exception as e:
-            self.logger.error(f"Unexpected error connecting to serial port: {e}")
+            self.logger.error("Unexpected error connecting to serial port: %s", e)
             self.connected = False
             return False
 
@@ -72,7 +75,7 @@ class SerialController:
                 self.connected = False
                 self.logger.info("Serial port disconnected")
             except Exception as e:
-                self.logger.error(f"Error disconnecting serial port: {e}")
+                self.logger.error("Error disconnecting serial port: %s", e)
 
     def _attempt_reconnect(self) -> bool:
         """Try to re-establish the serial connection with backoff.
@@ -113,17 +116,17 @@ class SerialController:
                 command += '\n'
 
             self.ser.write(command.encode('utf-8'))
-            self.logger.debug(f"Sent command: {command.strip()}")
+            self.logger.debug("Sent command: %s", command.strip())
             return True
         except serial.SerialException as e:
-            self.logger.error(f"Serial IO error sending command: {e}")
+            self.logger.error("Serial IO error sending command: %s", e)
             self.connected = False
             if self._attempt_reconnect():
                 return self.send_command(command)
             self.logger.critical("Serial reconnect failed – command lost")
             return False
         except Exception as e:
-            self.logger.error(f"Error sending command: {e}")
+            self.logger.error("Error sending command: %s", e)
             return False
 
     def read_response(self, max_lines: int = 1) -> Optional[str]:
@@ -150,16 +153,16 @@ class SerialController:
 
             if lines:
                 response = '\n'.join(lines)
-                self.logger.debug(f"Received response: {response}")
+                self.logger.debug("Received response: %s", response)
                 return response
             return None
         except serial.SerialException as e:
-            self.logger.error(f"Serial IO error reading response: {e}")
+            self.logger.error("Serial IO error reading response: %s", e)
             self.connected = False
             self._attempt_reconnect()
             return None
         except Exception as e:
-            self.logger.error(f"Error reading response: {e}")
+            self.logger.error("Error reading response: %s", e)
             return None
 
     def send_and_receive(self, command: str, timeout: float = 1.0) -> Optional[str]:

@@ -2,6 +2,9 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 Main Application Entry Point (Controller Pattern)
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 Loads config.yaml, initializes hardware modules, and provides
 a state-machine-driven control loop for MANUAL and AUTO-SLAVE modes.
 Includes degraded-mode logic, outlier rejection, hysteresis, and
@@ -55,7 +58,9 @@ except ImportError:                     # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+from path_utils import get_base_path
+
+DEFAULT_CONFIG_PATH = get_base_path() / "config.yaml"
 
 # ---------------------------------------------------------------------------
 # Default configuration – used as fallback when keys are missing / invalid

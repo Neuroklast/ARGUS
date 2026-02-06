@@ -2,10 +2,14 @@
 ARGUS - Advanced Rotation Guidance Using Sensors
 GUI Module
 
+Copyright (c) 2026 Kay Schäfer. All Rights Reserved.
+Proprietary and confidential. See LICENSE for details.
+
 Professional dark-mode interface built with customtkinter for
 observatory dome control and monitoring.
 """
 
+import logging
 import math
 from pathlib import Path
 from tkinter import Canvas
@@ -13,9 +17,12 @@ from tkinter import Canvas
 import customtkinter as ctk
 
 from settings_gui import SettingsWindow
+from path_utils import get_base_path
+
+logger = logging.getLogger(__name__)
 
 # Path to the red-night theme JSON shipped with the project
-_THEME_DIR = Path(__file__).resolve().parent.parent / "assets" / "themes"
+_THEME_DIR = get_base_path() / "assets" / "themes"
 RED_NIGHT_THEME = str(_THEME_DIR / "red_night.json")
 
 # ---------------------------------------------------------------------------
@@ -216,7 +223,7 @@ class ArgusApp(ctk.CTk):
         self.ind_vision = _indicator(frame, "VISION", 1, 1)
         self.ind_motor = _indicator(frame, "MOTOR", 1, 2)
 
-    # -- C. Manual Controls ---------------------------------------------
+    # -- D. Manual Controls ---------------------------------------------
     def _create_controls_section(self):
         """Section D – CCW / STOP / CW buttons."""
         frame = ctk.CTkFrame(self.dashboard_frame)
@@ -246,7 +253,7 @@ class ArgusApp(ctk.CTk):
         )
         self.btn_cw.grid(row=1, column=2, sticky="ew", padx=6, pady=(2, 8))
 
-    # -- D. Settings / Mode ---------------------------------------------
+    # -- E. Mode Selector ------------------------------------------------
     def _create_mode_section(self):
         """Section E – mode selector segmented button."""
         frame = ctk.CTkFrame(self.dashboard_frame)
@@ -339,19 +346,19 @@ class ArgusApp(ctk.CTk):
     # ===================================================================
     def on_btn_left_pressed(self):
         """Dummy handler – rotate counter-clockwise."""
-        print("Left")
+        logger.debug("Manual control: CCW")
 
     def on_btn_stop_pressed(self):
         """Dummy handler – emergency stop."""
-        print("Stop")
+        logger.debug("Manual control: STOP")
 
     def on_btn_right_pressed(self):
         """Dummy handler – rotate clockwise."""
-        print("Right")
+        logger.debug("Manual control: CW")
 
     def on_mode_changed(self, value: str):
         """Dummy handler – mode selection changed."""
-        print(f"Mode: {value}")
+        logger.info("Mode changed to %s", value)
 
     def on_night_mode_toggled(self):
         """Toggle between 'red_night' and 'dark-blue' colour themes."""
