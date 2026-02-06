@@ -15,5 +15,8 @@ pyserial>=3.5
 # Configuration management
 pyyaml>=6.0
 
+# GUI
+customtkinter>=5.2.0
+
 # Logging
 coloredlogs>=15.0
