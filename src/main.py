@@ -21,22 +21,22 @@ from simulation_sensor import SimulationSensor
 # Hardware imports with graceful fallback --------------------------------
 try:
     from ascom_handler import ASCOMHandler
-except Exception:                       # pragma: no cover
+except ImportError:                     # pragma: no cover
     ASCOMHandler = None                 # type: ignore[assignment,misc]
 
 try:
     from serial_ctrl import SerialController
-except Exception:                       # pragma: no cover
+except ImportError:                     # pragma: no cover
     SerialController = None             # type: ignore[assignment,misc]
 
 try:
     from vision import VisionSystem
-except Exception:                       # pragma: no cover
+except ImportError:                     # pragma: no cover
     VisionSystem = None                 # type: ignore[assignment,misc]
 
 try:
     from math_utils import MathUtils
-except Exception:                       # pragma: no cover
+except ImportError:                     # pragma: no cover
     MathUtils = None                    # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ class ArgusController:
         level = getattr(logging, log_cfg.get("level", "INFO"), logging.INFO)
         log_file = log_cfg.get("file")
 
-        handlers: list[logging.Handler] = []
+        handlers = []
         if log_cfg.get("console", True):
             handlers.append(logging.StreamHandler())
         if log_file:
@@ -290,6 +290,7 @@ class ArgusController:
         interval = 1.0 / max(update_rate, 1)
         correction_threshold = ctrl_cfg.get("correction_threshold", 0.5)
         max_speed = ctrl_cfg.get("max_speed", 100)
+        proportional_gain = ctrl_cfg.get("proportional_gain", 2.0)
         drift_enabled = ctrl_cfg.get("drift_correction_enabled", True)
 
         last = time.time()
@@ -324,10 +325,12 @@ class ArgusController:
                         if frame is not None:
                             markers = self.vision.detect_markers(frame)
                             if markers:
-                                shape = markers.get(
-                                    "frame_shape", (720, 1280, 3)
-                                )
-                                expected = (shape[1] / 2, shape[0] / 2)
+                                shape = markers.get("frame_shape")
+                                if shape:
+                                    expected = (shape[1] / 2, shape[0] / 2)
+                                else:
+                                    res = self.vision.resolution
+                                    expected = (res[0] / 2, res[1] / 2)
                                 drift = self.vision.calculate_drift(
                                     markers, expected
                                 )
@@ -345,7 +348,7 @@ class ArgusController:
                     if error > 180:
                         error = 360 - error
                     if error > correction_threshold and self.serial:
-                        speed = min(int(error * 2), max_speed)
+                        speed = min(int(error * proportional_gain), max_speed)
                         self.serial.move_to_azimuth(target_az, speed)
 
             # Simulation sensor always ticks (all modes)
