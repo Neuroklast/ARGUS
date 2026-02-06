@@ -33,13 +33,19 @@ class ReplayASCOMHandler:
         for accelerated replay.
     """
 
-    def __init__(self, data: List[Dict], speed: float = 1.0):
+    def __init__(self, data: List[Dict], speed: float = 1.0,
+                 site_data: Optional[Dict[str, float]] = None):
         if not data:
             raise ValueError("Replay data must not be empty")
 
         self.data = data
         self.speed = max(speed, 0.01)
         self.connected = True
+        self._site_data = site_data or {
+            "latitude": 51.17,
+            "longitude": 7.08,
+            "elevation": 0.0,
+        }
 
         # Time references
         self._start_wall = time.time()
@@ -125,12 +131,8 @@ class ReplayASCOMHandler:
         }
 
     def get_site_data(self) -> Optional[Dict[str, float]]:
-        """Return fixed site coordinates (from header metadata)."""
-        return {
-            "latitude": 51.17,
-            "longitude": 7.08,
-            "elevation": 0.0,
-        }
+        """Return fixed site coordinates (configurable via constructor)."""
+        return dict(self._site_data)
 
     @property
     def current_status(self) -> str:

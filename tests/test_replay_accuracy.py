@@ -34,7 +34,7 @@ PIER_HEIGHT = 1.0   # metres (reasonable default)
 # Tighter thresholds (< 1°) are achievable when running with live IERS
 # data and properly calibrated GEM parameters.
 MAX_SINGLE_ERROR = 12.0
-MAX_AVERAGE_ERROR = 12.0
+MAX_ERROR_THRESHOLD = 12.0
 
 # Statuses to skip (geometry often unreliable)
 SKIP_STATUSES = {
@@ -120,6 +120,6 @@ def test_orion_tracking_accuracy(calibration_data, math_utils):
     print(f"Maximum Error  : {max_err:.2f} degrees")
     print(f"------------------------------")
 
-    assert max_err <= MAX_AVERAGE_ERROR, (
-        f"Maximum error {max_err:.2f}° exceeds threshold of {MAX_AVERAGE_ERROR}°"
+    assert max_err <= MAX_ERROR_THRESHOLD, (
+        f"Maximum error {max_err:.2f}° exceeds threshold of {MAX_ERROR_THRESHOLD}°"
     )

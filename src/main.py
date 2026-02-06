@@ -889,7 +889,7 @@ class ArgusController:
         replay = ReplayASCOMHandler(data, speed=speed)
 
         # Hot-swap: save real handler and inject replay handler
-        self.real_ascom = self.ascom
+        self.real_ascom = getattr(self, "real_ascom", None) or self.ascom
         self.ascom = replay
         logger.info("DEMO MODE: Replay started from %s (%d records)", csv_path, len(data))
 
