@@ -9,10 +9,12 @@ Professional dark-mode interface built with customtkinter for
 observatory dome control and monitoring.
 """
 
+import datetime
 import logging
 import math
 from pathlib import Path
 from tkinter import Canvas
+import tkinter as tk
 
 import customtkinter as ctk
 
@@ -26,13 +28,16 @@ _THEME_DIR = get_base_path() / "assets" / "themes"
 RED_NIGHT_THEME = str(_THEME_DIR / "red_night.json")
 
 # ---------------------------------------------------------------------------
-# Font Constants (Monospace is critical for telemetry readouts)
+# Font Constants
+# Sans-serif (Roboto) for static labels/headings,
+# Monospace (Roboto Mono) for changing numeric readouts.
 # ---------------------------------------------------------------------------
 FONT_DATA = ("Roboto Mono", 24, "bold")
-FONT_LABEL = ("Roboto Mono", 12)
-FONT_BUTTON = ("Roboto Mono", 14, "bold")
-FONT_SECTION = ("Roboto Mono", 13, "bold")
-FONT_INDICATOR = ("Roboto Mono", 11)
+FONT_LABEL = ("Roboto", 12)
+FONT_BUTTON = ("Roboto", 14, "bold")
+FONT_SECTION = ("Roboto", 13, "bold")
+FONT_INDICATOR = ("Roboto", 11)
+FONT_LOG = ("Roboto Mono", 10)
 
 # ---------------------------------------------------------------------------
 # Colour Constants
@@ -44,6 +49,8 @@ COLOR_OFF = "#555555"         # Grey – indicator off
 COLOR_ON = "#2ECC71"          # Green – indicator on
 COLOR_MOVING = "#F1C40F"      # Yellow – motor moving
 COLOR_NO_SIGNAL = "#888888"   # Grey text for "NO SIGNAL"
+COLOR_CARD_BG = "#2B2B2B"    # Card background (lighter than window)
+CARD_CORNER_RADIUS = 12       # Rounded corners for card frames
 
 
 class ArgusApp(ctk.CTk):
@@ -61,10 +68,12 @@ class ArgusApp(ctk.CTk):
         self.grid_columnconfigure(0, weight=3)   # Video column
         self.grid_columnconfigure(1, weight=1)   # Controls column
         self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=0)       # Log terminal row
 
         # -- Build panels ------------------------------------------------
         self.create_video_panel()
         self.create_dashboard_panel()
+        self._create_log_terminal()
 
     # ===================================================================
     # LEFT PANEL – Video Feed
@@ -107,7 +116,10 @@ class ArgusApp(ctk.CTk):
     # -- A. Telemetry ---------------------------------------------------
     def _create_telemetry_section(self):
         """Section A – large monospace readouts for azimuth data."""
-        frame = ctk.CTkFrame(self.dashboard_frame)
+        frame = ctk.CTkFrame(
+            self.dashboard_frame, fg_color=COLOR_CARD_BG,
+            corner_radius=CARD_CORNER_RADIUS, border_width=0,
+        )
         frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=(8, 4))
         frame.grid_columnconfigure(1, weight=1)
 
@@ -141,7 +153,10 @@ class ArgusApp(ctk.CTk):
     # -- B. Radar -----------------------------------------------------------
     def _create_radar_section(self):
         """Section B – top-down radar view of dome and mount."""
-        frame = ctk.CTkFrame(self.dashboard_frame)
+        frame = ctk.CTkFrame(
+            self.dashboard_frame, fg_color=COLOR_CARD_BG,
+            corner_radius=CARD_CORNER_RADIUS, border_width=0,
+        )
         frame.grid(row=1, column=0, sticky="nsew", padx=8, pady=4)
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_rowconfigure(1, weight=1)
@@ -198,7 +213,10 @@ class ArgusApp(ctk.CTk):
     # -- C. Status Monitor ----------------------------------------------
     def _create_status_section(self):
         """Section C – small coloured status indicators."""
-        frame = ctk.CTkFrame(self.dashboard_frame)
+        frame = ctk.CTkFrame(
+            self.dashboard_frame, fg_color=COLOR_CARD_BG,
+            corner_radius=CARD_CORNER_RADIUS, border_width=0,
+        )
         frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=4)
         frame.grid_columnconfigure((0, 1, 2), weight=1)
 
@@ -226,7 +244,10 @@ class ArgusApp(ctk.CTk):
     # -- D. Manual Controls ---------------------------------------------
     def _create_controls_section(self):
         """Section D – CCW / STOP / CW buttons."""
-        frame = ctk.CTkFrame(self.dashboard_frame)
+        frame = ctk.CTkFrame(
+            self.dashboard_frame, fg_color=COLOR_CARD_BG,
+            corner_radius=CARD_CORNER_RADIUS, border_width=0,
+        )
         frame.grid(row=3, column=0, sticky="nsew", padx=8, pady=4)
         frame.grid_columnconfigure((0, 1, 2), weight=1)
 
@@ -235,20 +256,20 @@ class ArgusApp(ctk.CTk):
         )
 
         self.btn_ccw = ctk.CTkButton(
-            frame, text="◀ CCW", font=FONT_BUTTON,
+            frame, text="◀ CCW", font=FONT_BUTTON, height=40,
             command=self.on_btn_left_pressed,
         )
         self.btn_ccw.grid(row=1, column=0, sticky="ew", padx=6, pady=(2, 8))
 
         self.btn_stop = ctk.CTkButton(
-            frame, text="STOP", font=FONT_BUTTON,
+            frame, text="STOP", font=FONT_BUTTON, height=40,
             fg_color=COLOR_STOP_BTN, hover_color=COLOR_STOP_HOVER,
             command=self.on_btn_stop_pressed,
         )
         self.btn_stop.grid(row=1, column=1, sticky="ew", padx=6, pady=(2, 8))
 
         self.btn_cw = ctk.CTkButton(
-            frame, text="CW ▶", font=FONT_BUTTON,
+            frame, text="CW ▶", font=FONT_BUTTON, height=40,
             command=self.on_btn_right_pressed,
         )
         self.btn_cw.grid(row=1, column=2, sticky="ew", padx=6, pady=(2, 8))
@@ -256,7 +277,10 @@ class ArgusApp(ctk.CTk):
     # -- E. Mode Selector ------------------------------------------------
     def _create_mode_section(self):
         """Section E – mode selector segmented button."""
-        frame = ctk.CTkFrame(self.dashboard_frame)
+        frame = ctk.CTkFrame(
+            self.dashboard_frame, fg_color=COLOR_CARD_BG,
+            corner_radius=CARD_CORNER_RADIUS, border_width=0,
+        )
         frame.grid(row=4, column=0, sticky="nsew", padx=8, pady=4)
         frame.grid_columnconfigure(0, weight=1)
 
@@ -276,7 +300,10 @@ class ArgusApp(ctk.CTk):
     # -- F. Settings (Night Mode + Settings Window) -----------------------
     def _create_settings_section(self):
         """Section F – settings with Night Mode toggle and settings button."""
-        frame = ctk.CTkFrame(self.dashboard_frame)
+        frame = ctk.CTkFrame(
+            self.dashboard_frame, fg_color=COLOR_CARD_BG,
+            corner_radius=CARD_CORNER_RADIUS, border_width=0,
+        )
         frame.grid(row=5, column=0, sticky="nsew", padx=8, pady=(4, 8))
         frame.grid_columnconfigure(0, weight=1)
 
@@ -302,9 +329,56 @@ class ArgusApp(ctk.CTk):
             text="⚙ SETTINGS",
             font=FONT_BUTTON,
             width=100,
+            height=40,
             command=self.open_settings,
         )
         self.btn_settings.grid(row=1, column=1, sticky="e", padx=8, pady=(2, 8))
+
+    # ===================================================================
+    # G. System Log Terminal
+    # ===================================================================
+    def _create_log_terminal(self):
+        """Create a read-only log terminal at the bottom of the window."""
+        log_frame = ctk.CTkFrame(
+            self, fg_color=COLOR_CARD_BG,
+            corner_radius=CARD_CORNER_RADIUS, border_width=0,
+        )
+        log_frame.grid(
+            row=1, column=0, columnspan=2,
+            sticky="nsew", padx=10, pady=(0, 10),
+        )
+        log_frame.grid_columnconfigure(0, weight=1)
+        log_frame.grid_rowconfigure(1, weight=1)
+
+        ctk.CTkLabel(log_frame, text="SYSTEM LOG", font=FONT_SECTION).grid(
+            row=0, column=0, sticky="w", padx=8, pady=(6, 2)
+        )
+
+        self.log_text = tk.Text(
+            log_frame, height=6, wrap="word",
+            bg="#1A1A1A", fg="#CCCCCC",
+            font=FONT_LOG,
+            insertbackground="#CCCCCC",
+            selectbackground="#555555",
+            relief="flat", borderwidth=0,
+            state="disabled",
+        )
+        self.log_text.grid(row=1, column=0, sticky="nsew", padx=8, pady=(2, 8))
+
+    def append_log(self, message: str) -> None:
+        """Append a timestamped message to the log terminal.
+
+        This method is safe to call from any thread via ``app.after()``.
+
+        Args:
+            message: The log text to display.
+        """
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        line = f"[{timestamp}] {message}\n"
+        self.log_text.configure(state="normal")
+        self.log_text.insert("end", line)
+        self.log_text.see("end")
+        self.log_text.configure(state="disabled")
 
     # ===================================================================
     # Public API

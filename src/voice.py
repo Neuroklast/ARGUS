@@ -29,8 +29,29 @@ class VoiceAssistant:
         if pyttsx3 is not None:
             try:
                 self._engine = pyttsx3.init()
+                self._set_english_voice()
             except Exception as exc:        # pragma: no cover
                 logger.warning("Could not initialise TTS engine: %s", exc)
+
+    def _set_english_voice(self):
+        """Attempt to select an English voice for the TTS engine."""
+        if self._engine is None:
+            return
+        try:
+            voices = self._engine.getProperty('voices')
+            if not voices:
+                return
+            for voice in voices:
+                voice_id = (voice.id or "").lower()
+                voice_name = (voice.name or "").lower()
+                combined = voice_id + " " + voice_name
+                if any(tag in combined for tag in ("english", "en-us", "en-gb", "en_us", "en_gb")):
+                    self._engine.setProperty('voice', voice.id)
+                    logger.info("English voice selected: %s", voice.name)
+                    return
+            logger.warning("No English voice found – using system default")
+        except Exception as exc:
+            logger.warning("Could not set English voice: %s", exc)
 
     def say(self, text: str) -> None:
         """Speak *text* in a background thread.

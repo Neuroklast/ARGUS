@@ -62,6 +62,28 @@ from path_utils import get_base_path
 
 DEFAULT_CONFIG_PATH = get_base_path() / "config.yaml"
 
+
+# ---------------------------------------------------------------------------
+# GUI Logging Handler – forwards log records to the GUI log terminal
+# ---------------------------------------------------------------------------
+class GuiLogHandler(logging.Handler):
+    """Custom logging handler that forwards messages to the GUI log terminal.
+
+    Uses ``app.after()`` to ensure thread-safe GUI updates, since log
+    messages may originate from background threads (camera, motor, etc.).
+    """
+
+    def __init__(self, app):
+        super().__init__()
+        self._app = app
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            self._app.after(0, self._app.append_log, msg)
+        except Exception:
+            self.handleError(record)
+
 # ---------------------------------------------------------------------------
 # Default configuration – used as fallback when keys are missing / invalid
 # ---------------------------------------------------------------------------
@@ -254,6 +276,12 @@ class ArgusController:
         ctk.set_default_color_theme("dark-blue")
 
         self.app = ArgusApp()
+
+        # -- Register GUI log handler ------------------------------------
+        gui_handler = GuiLogHandler(self.app)
+        gui_handler.setLevel(logging.INFO)
+        gui_handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+        logging.getLogger().addHandler(gui_handler)
 
         # Simulation fallback (always available)
         self.sensor = SimulationSensor()
