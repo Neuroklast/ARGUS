@@ -308,6 +308,7 @@ class ArgusController:
         self._last_status: str = "Stopped"
         self._last_vision_ok: bool = True
         self._health: str = HEALTH_HEALTHY
+        self._last_reconnect_time: float = 0.0
 
         # -- Alpaca / slaving state --------------------------------------
         self.is_slaved: bool = False
@@ -619,22 +620,42 @@ class ArgusController:
         logger.info("Homing complete – position set to %.1f°", home_az)
 
     def _update_indicators(self):
-        """Push current hardware status to the GUI indicator badges."""
+        """Push current hardware status to the GUI indicator badges and hints."""
         if self.gui is None:
             return
         try:
-            self.gui.set_indicator(
-                "ascom",
-                self.ascom is not None and self.ascom.connected,
-            )
-            self.gui.set_indicator(
-                "vision",
-                self.vision is not None and self.vision.camera_open,
-            )
-            self.gui.set_indicator(
-                "motor",
-                self.serial is not None and self.serial.connected,
-            )
+            ascom_ok = self.ascom is not None and self.ascom.connected
+            vision_ok = self.vision is not None and self.vision.camera_open
+            motor_ok = self.serial is not None and self.serial.connected
+
+            self.gui.set_indicator("ascom", ascom_ok)
+            self.gui.set_indicator("vision", vision_ok)
+            self.gui.set_indicator("motor", motor_ok)
+
+            # Update user-facing hint labels
+            if ascom_ok:
+                self.gui.set_status_hint("ascom", "Connected")
+            elif self.ascom is None:
+                self.gui.set_status_hint("ascom", "Not connected")
+            else:
+                self.gui.set_status_hint("ascom", "Reconnecting…")
+
+            if vision_ok:
+                self.gui.set_status_hint("vision", "Connected")
+            elif self.vision is None:
+                self.gui.set_status_hint("vision", "No camera found")
+            else:
+                self.gui.set_status_hint("vision", "Reconnecting…")
+
+            if motor_ok:
+                self.gui.set_status_hint("motor", "Connected")
+            elif self.serial is None:
+                self.gui.set_status_hint("motor", "Not connected")
+            else:
+                self.gui.set_status_hint("motor", "Reconnecting…")
+
+            # Update the top-level connection banner
+            self.gui.update_connection_banner(ascom_ok, vision_ok, motor_ok)
         except Exception:
             pass
 
@@ -662,6 +683,69 @@ class ArgusController:
             self._health = new_health
 
         return new_health
+
+    # ---- Periodic hardware reconnection ---------------------------------
+    _RECONNECT_INTERVAL = 10.0  # seconds between reconnection attempts
+
+    def _try_reconnect_hardware(self) -> None:
+        """Attempt to reconnect disconnected hardware components.
+
+        Called periodically from the control loop so that newly attached
+        devices are detected automatically without restarting the app.
+        """
+        # ASCOM telescope
+        if (self.ascom is None or not self.ascom.connected) and ASCOMHandler is not None:
+            try:
+                ascom_cfg = self.config.get("ascom", {})
+                prog_id = ascom_cfg.get(
+                    "telescope_prog_id", "ASCOM.Simulator.Telescope"
+                )
+                handler = ASCOMHandler(prog_id)
+                if handler.connect():
+                    self.ascom = handler
+                    logger.info("ASCOM telescope reconnected")
+                    if self.gui:
+                        self.gui.write_log("✓ Telescope connected")
+            except Exception:
+                pass
+
+        # Serial motor controller
+        if (self.serial is None or not self.serial.connected) and SerialController is not None:
+            try:
+                hw_cfg = self.config.get("hardware", {})
+                ctrl = SerialController(
+                    port=hw_cfg.get("serial_port", "COM3"),
+                    baud_rate=hw_cfg.get("baud_rate", 9600),
+                    timeout=hw_cfg.get("timeout", 1.0),
+                )
+                if ctrl.connect():
+                    self.serial = ctrl
+                    self._init_dome_driver()
+                    logger.info("Serial motor controller reconnected")
+                    if self.gui:
+                        self.gui.write_log("✓ Motor controller connected")
+            except Exception:
+                pass
+
+        # Vision / camera
+        if (self.vision is None or not self.vision.camera_open) and VisionSystem is not None:
+            try:
+                vis_cfg = self.config.get("vision", {})
+                res = vis_cfg.get("resolution", {})
+                aruco_cfg = vis_cfg.get("aruco", {})
+                cam = VisionSystem(
+                    camera_index=vis_cfg.get("camera_index", 0),
+                    resolution=(res.get("width", 1280), res.get("height", 720)),
+                    aruco_dict=aruco_cfg.get("dictionary", "DICT_4X4_50"),
+                    marker_size=aruco_cfg.get("marker_size", 0.05),
+                )
+                if cam.open_camera():
+                    self.vision = cam
+                    logger.info("Camera reconnected")
+                    if self.gui:
+                        self.gui.write_log("✓ Camera connected")
+            except Exception:
+                pass
 
     # ---- Outlier rejection (vision drift) -------------------------------
     def _filter_drift(self, drift_az: float) -> Optional[float]:
@@ -782,6 +866,11 @@ class ArgusController:
             last = now
 
             current_mode = self.mode
+
+            # -- Periodic hardware reconnection ---------------------------
+            if now - self._last_reconnect_time >= self._RECONNECT_INTERVAL:
+                self._last_reconnect_time = now
+                self._try_reconnect_hardware()
 
             # -- Health check (cyclic) ------------------------------------
             health = self.check_system_health()
