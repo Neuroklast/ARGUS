@@ -609,10 +609,6 @@ class ArgusGUI:
         """
         if frame is None:
             self.camera_image.src = f"data:image/png;base64,{self._placeholder_b64}"
-            try:
-                self.page.update()
-            except Exception:
-                pass
             return
 
         overlay = frame.copy()
@@ -684,10 +680,7 @@ class ArgusGUI:
         _, buf = cv2.imencode(".jpg", overlay, [cv2.IMWRITE_JPEG_QUALITY, 70])
         b64 = base64.b64encode(buf.tobytes()).decode("ascii")
         self.camera_image.src = f"data:image/jpeg;base64,{b64}"
-        try:
-            self.page.update()
-        except Exception:
-            pass
+        # No page.update() here – caller uses batch_update() to coalesce
 
     # ===================================================================
     # Theme cycling (dark → day → night → dark)
@@ -1008,8 +1001,23 @@ class ArgusGUI:
         )
 
         if dlg is not None:
-            # Update the existing loading dialog with results
-            dlg.content = result_content
+            # Close the loading dialog and replace with results dialog
+            dlg.open = False
+            try:
+                self.page.update()
+            except Exception:
+                pass
+            # Create fresh dialog to avoid stale content issue
+            new_dlg = ft.AlertDialog(
+                title=ft.Text(t("gui.diagnostics_title")),
+                content=result_content,
+                actions=[
+                    ft.TextButton(t("gui.close"),
+                                  on_click=lambda e: self._close_dialog(new_dlg)),
+                ],
+            )
+            self.page.overlay.append(new_dlg)
+            new_dlg.open = True
         else:
             dlg = ft.AlertDialog(
                 title=ft.Text(t("gui.diagnostics_title")),
