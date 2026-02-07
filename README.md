@@ -146,6 +146,30 @@ safety:
   max_nudge_while_protruding: 2.0  # max dome correction (°) while telescope is in slit
 ```
 
+### Language Configuration
+```yaml
+language: "en"   # "en" for English, "de" for German (Deutsch)
+```
+
+## Features
+
+### Night Mode
+ARGUS includes a pure-black night mode that preserves dark-adapted vision.
+Toggle it via the moon icon in the toolbar. All UI elements switch to red-on-black
+for minimal impact on night vision at the observatory.
+
+### Localization (EN / DE)
+The entire user interface is available in English and German. Set `language: "de"`
+in `config.yaml` to switch. All labels, tooltips, settings, and splash messages
+are translated.
+
+### Camera Overlay HUD
+The live camera preview includes a heads-up display (HUD) overlay showing:
+- Mount and dome azimuth
+- Tracking error with colour-coded severity
+- Current operating mode
+- System health status
+
 ## Usage
 
 ### Run ARGUS with default configuration:

@@ -523,7 +523,22 @@ class SystemDiagnostics:
         configured_index = vis_cfg.get("camera_index", 0)
         found_cameras: list = []
 
+        active_cam_idx = None
+        if self.controller and self.controller.vision and self.controller.vision.camera_open:
+            active_cam_idx = self.controller.vision.camera_index
+
         for i in range(5):
+            if i == active_cam_idx:
+                # Camera in use by the vision system – report without re-opening
+                try:
+                    frame = self.controller.vision.capture_frame()
+                    if frame is not None:
+                        h, w = frame.shape[:2]
+                        found_cameras.append((i, w, h))
+                except Exception:
+                    pass
+                continue
+            cap = None
             try:
                 cap = cv2.VideoCapture(i)
                 if cap.isOpened():
@@ -531,9 +546,11 @@ class SystemDiagnostics:
                     if ret and frame is not None:
                         h, w = frame.shape[:2]
                         found_cameras.append((i, w, h))
-                    cap.release()
             except Exception:
                 pass
+            finally:
+                if cap is not None:
+                    cap.release()
 
         if found_cameras:
             cam_info = [f"Camera {i} ({w}×{h})" for i, w, h in found_cameras]
