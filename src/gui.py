@@ -465,16 +465,16 @@ class ArgusGUI:
             mode = telemetry.get("mode", "")
             health = telemetry.get("health", "")
             if mount_az is not None:
-                cv2.putText(overlay, f"{t('overlay.mount_az')}: {mount_az:06.1f}\xb0",
+                cv2.putText(overlay, f"{t('overlay.mount_az')}: {mount_az:06.1f}°",
                             (w - 250, hud_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, hud_color, 1)
                 hud_y += 22
             if dome_az is not None:
-                cv2.putText(overlay, f"{t('overlay.dome_az')}: {dome_az:06.1f}\xb0",
+                cv2.putText(overlay, f"{t('overlay.dome_az')}: {dome_az:06.1f}°",
                             (w - 250, hud_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, hud_color, 1)
                 hud_y += 22
             if error is not None:
                 err_color = (0, 255, 0) if abs(error) < 2.0 else (0, 165, 255) if abs(error) < 5.0 else (0, 0, 255)
-                cv2.putText(overlay, f"{t('overlay.error')}: {error:+.1f}\xb0",
+                cv2.putText(overlay, f"{t('overlay.error')}: {error:+.1f}°",
                             (w - 250, hud_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, err_color, 1)
                 hud_y += 22
             if mode:

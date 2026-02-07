@@ -1406,18 +1406,19 @@ def main(page: ft.Page):
             gui = ArgusGUI(page)
             page._argus_gui = gui
 
+            _SPLASH_STEP_DELAY = 0.1  # seconds between splash steps
+
             _update_splash(0.20, t("splash.init_math"))
-            import time as _time
-            _time.sleep(0.1)
+            time.sleep(_SPLASH_STEP_DELAY)
 
             _update_splash(0.30, t("splash.init_ascom"))
-            _time.sleep(0.1)
+            time.sleep(_SPLASH_STEP_DELAY)
 
             _update_splash(0.40, t("splash.init_serial"))
-            _time.sleep(0.1)
+            time.sleep(_SPLASH_STEP_DELAY)
 
             _update_splash(0.50, t("splash.init_vision"))
-            _time.sleep(0.1)
+            time.sleep(_SPLASH_STEP_DELAY)
 
             _update_splash(0.60, t("splash.init_voice"))
             controller = ArgusController(config=config, gui=gui)
@@ -1433,13 +1434,13 @@ def main(page: ft.Page):
                     logger.warning("Failed to start Alpaca server: %s", exc)
 
             _update_splash(0.85, t("splash.start_loop"))
-            _time.sleep(0.15)
+            time.sleep(_SPLASH_STEP_DELAY * 1.5)
 
             page._argus_controller = controller
             page._argus_alpaca = alpaca
 
             _update_splash(1.0, t("splash.ready"))
-            _time.sleep(0.3)
+            time.sleep(0.3)
 
             # Remove the splash – the real GUI is already on the page.
             try:
