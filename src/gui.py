@@ -382,7 +382,9 @@ def _standalone_main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK
     page.window.width = 1280
     page.window.height = 720
-    ArgusGUI(page)
+    gui = ArgusGUI(page)
+    # Keep a reference on the page to prevent garbage collection
+    page._argus_gui = gui
 
 
 if __name__ == "__main__":

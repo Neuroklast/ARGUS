@@ -1116,6 +1116,13 @@ def main(page: ft.Page):
         except Exception as exc:
             logger.warning("Failed to start Alpaca server: %s", exc)
 
+    # Store references on the page to prevent garbage collection.
+    # Without this, the local variables are collected when main() returns,
+    # causing the Flet session to be destroyed ("Session was garbage collected").
+    page._argus_gui = gui
+    page._argus_controller = controller
+    page._argus_alpaca = alpaca
+
 
 if __name__ == "__main__":
     ft.run(main)

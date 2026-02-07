@@ -296,3 +296,20 @@ class TestCardHelper:
     def test_card_uses_correct_bg(self):
         container = _card(ft.Text("test"))
         assert container.bgcolor == COLOR_CARD_BG
+
+
+# ---------------------------------------------------------------------------
+# Session garbage-collection prevention
+# ---------------------------------------------------------------------------
+class TestSessionGcPrevention:
+    """Verify that entry points pin objects on the page to prevent GC."""
+
+    def test_standalone_main_stores_gui_on_page(self):
+        """_standalone_main must store the GUI on the page to prevent GC."""
+        from gui import _standalone_main
+
+        page = _make_mock_page()
+        page.window = MagicMock()
+        _standalone_main(page)
+        assert hasattr(page, "_argus_gui")
+        assert isinstance(page._argus_gui, ArgusGUI)
