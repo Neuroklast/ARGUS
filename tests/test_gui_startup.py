@@ -643,6 +643,8 @@ class TestSettingsDialog:
         page = _make_mock_page()
         page.overlay = []
         show_settings_dialog(page, {}, lambda cfg: None)
+        # Dialog was appended to overlay
+        assert len(page.overlay) == 1
 
 
 # ---------------------------------------------------------------------------

@@ -565,7 +565,7 @@ class ArgusGUI:
         arc_half_deg = 10
         start_deg = dome_az - 90 - arc_half_deg
         sweep_deg = 2 * arc_half_deg
-        slit_color = "#2ECC71" if slit_open else "#F1C40F"
+        slit_color = th["on"] if slit_open else th["moving"]
         shapes.append(cv.Arc(
             cx - r, cy - r, 2 * r, 2 * r,
             start_angle=math.radians(start_deg),
@@ -688,7 +688,7 @@ class ArgusGUI:
     def toggle_night_mode(self) -> None:
         """Cycle through Dark → NASA Day → Night-Vision themes."""
         themes = [THEME_DARK, THEME_DAY, THEME_NIGHT]
-        icons = [ft.Icons.LIGHT_MODE, ft.Icons.NIGHTLIGHT_ROUND,
+        icons = [ft.Icons.BRIGHTNESS_2, ft.Icons.NIGHTLIGHT_ROUND,
                  ft.Icons.BRIGHTNESS_7]
         self._theme_cycle_index = (self._theme_cycle_index + 1) % len(themes)
         self._theme = dict(themes[self._theme_cycle_index])

@@ -1136,10 +1136,8 @@ class ArgusController:
                 if abs(sim_error) > correction_threshold and not self.serial:
                     sim_speed = min(abs(sim_error) * 2.0, 10.0)
                     self.sensor.slew_rate = sim_speed if sim_error > 0 else -sim_speed
-                elif abs(sim_error) <= correction_threshold:
-                    if abs(self.sensor.slew_rate) > 0 and not self.serial:
-                        # Only auto-stop when simulation is driving
-                        pass
+                elif abs(sim_error) <= correction_threshold and not self.serial:
+                    self.sensor.slew_rate = 0.0
 
             # -- Voice feedback: Moving → Stopped -------------------------
             current_status = "Moving" if abs(self.sensor.slew_rate) > 1e-6 else "Stopped"
