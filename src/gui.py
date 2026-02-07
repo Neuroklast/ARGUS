@@ -128,7 +128,7 @@ class ArgusGUI:
 
         # Log list
         self.log_list = ft.ListView(
-            height=120, spacing=2, auto_scroll=True,
+            height=90, spacing=2, auto_scroll=True,
         )
 
         # Control buttons (callbacks set later by the controller)
@@ -251,11 +251,11 @@ class ArgusGUI:
             ft.Row([self.btn_diagnostics, self.btn_settings], spacing=0),
         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
 
-        # --- Log card ---
+        # --- Log card (fixed height so it never pushes the dashboard off-screen) ---
         log_card = _card(ft.Column([
             ft.Text("SYSTEM LOG", weight=ft.FontWeight.BOLD, size=13),
             self.log_list,
-        ], spacing=4), expand=True)
+        ], spacing=4))
 
         # --- Dashboard (right column) ---
         dashboard = ft.Column([
@@ -269,7 +269,7 @@ class ArgusGUI:
 
         # --- Main layout ---
         main_row = ft.Row([
-            ft.Container(content=video_card, expand=3),
+            ft.Container(content=video_card, expand=2),
             ft.Container(content=dashboard, expand=1),
         ], expand=True, spacing=8)
 
@@ -555,6 +555,7 @@ class ArgusGUI:
             pass
 # -----------------------------------------------------------------------
 def _standalone_main(page: ft.Page):
+    """Standalone entry point for previewing the GUI without the controller."""
     page.title = "ARGUS – Dome Control"
     page.bgcolor = COLOR_BG
     page.theme_mode = ft.ThemeMode.DARK

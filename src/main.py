@@ -82,9 +82,9 @@ except ImportError:                     # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-from path_utils import get_base_path
+from path_utils import get_base_path, resolve_path
 
-DEFAULT_CONFIG_PATH = get_base_path() / "config.yaml"
+DEFAULT_CONFIG_PATH = resolve_path("config.yaml")
 
 
 # ---------------------------------------------------------------------------
@@ -1274,29 +1274,67 @@ def main(page: ft.Page):
     page.window.width = 1280
     page.window.height = 720
 
+    # -- Show a loading screen while hardware initialises ------------------
+    loading_ring = ft.ProgressRing(width=48, height=48, stroke_width=4)
+    loading_text = ft.Text(
+        "Initialising hardware …",
+        size=14, color="#888888", text_align=ft.TextAlign.CENTER,
+    )
+    loading_overlay = ft.Container(
+        content=ft.Column(
+            [loading_ring, loading_text],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=16,
+        ),
+        alignment=ft.Alignment(0, 0),
+        expand=True,
+        bgcolor=COLOR_BG,
+    )
+    page.add(loading_overlay)
+    page.update()
+
+    # -- Build GUI (hidden until init finishes) ----------------------------
     gui = ArgusGUI(page)
 
-    try:
-        controller = ArgusController(config=load_config(), gui=gui)
-    except Exception:
-        logger.critical("Unhandled exception – shutting down", exc_info=True)
-        sys.exit(1)
-
-    # Start ASCOM Alpaca server (if available)
-    alpaca = None
-    if AlpacaDomeServer is not None:
-        try:
-            alpaca = AlpacaDomeServer(controller)
-            alpaca.start()
-        except Exception as exc:
-            logger.warning("Failed to start Alpaca server: %s", exc)
-
-    # Store references on the page to prevent garbage collection.
-    # Without this, the local variables are collected when main() returns,
-    # causing the Flet session to be destroyed ("Session was garbage collected").
+    # Pin the GUI reference immediately so the session cannot be GC-ed
+    # while the background thread is still running.
     page._argus_gui = gui
-    page._argus_controller = controller
-    page._argus_alpaca = alpaca
+
+    def _deferred_init():
+        """Run heavy hardware initialisation in a background thread."""
+        try:
+            controller = ArgusController(config=load_config(), gui=gui)
+        except Exception:
+            logger.critical("Unhandled exception during init", exc_info=True)
+            loading_text.value = "⚠ Initialisation failed – see log"
+            loading_ring.visible = False
+            try:
+                page.update()
+            except Exception:
+                pass
+            return
+
+        # Start ASCOM Alpaca server (if available)
+        alpaca = None
+        if AlpacaDomeServer is not None:
+            try:
+                alpaca = AlpacaDomeServer(controller)
+                alpaca.start()
+            except Exception as exc:
+                logger.warning("Failed to start Alpaca server: %s", exc)
+
+        page._argus_controller = controller
+        page._argus_alpaca = alpaca
+
+        # Remove the loading overlay – the real GUI is already on the page.
+        try:
+            page.controls.remove(loading_overlay)
+            page.update()
+        except Exception:
+            pass
+
+    threading.Thread(target=_deferred_init, name="argus-init", daemon=True).start()
 
 
 if __name__ == "__main__":

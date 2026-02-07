@@ -203,8 +203,8 @@ class SystemDiagnostics:
         results: List[DiagResult] = []
 
         # Config file exists
-        from path_utils import get_base_path
-        config_path = get_base_path() / "config.yaml"
+        from path_utils import resolve_path
+        config_path = resolve_path("config.yaml")
         if config_path.is_file():
             results.append(DiagResult(
                 category="Config", name="Config File",
@@ -639,7 +639,7 @@ class SystemDiagnostics:
     def _check_disk(self) -> List[DiagResult]:
         results: List[DiagResult] = []
 
-        from path_utils import get_base_path
+        from path_utils import get_base_path, resolve_path
         base = get_base_path()
 
         # Writable check
@@ -661,8 +661,8 @@ class SystemDiagnostics:
                            "or run as administrator.",
             ))
 
-        # Assets directory
-        assets = base / "assets"
+        # Assets directory (may live beside the .exe or inside _internal/)
+        assets = resolve_path("assets")
         if assets.is_dir():
             results.append(DiagResult(
                 category="Disk", name="Assets Directory",
