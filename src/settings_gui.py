@@ -93,6 +93,7 @@ def show_settings_dialog(
     mount = config.get("math", {}).get("mount", {})
     ctrl = config.get("control", {})
     safety = config.get("safety", {})
+    dome_limits = config.get("dome", {})
 
     # -- Hardware tab fields ---
     tf_serial_port = ft.TextField(label=t("settings.serial_port"),
@@ -230,6 +231,16 @@ def show_settings_dialog(
         value=str(safety.get("max_nudge_while_protruding", 2.0)),
     )
 
+    # -- Rotation limits fields ---
+    tf_az_min = ft.TextField(
+        label=t("settings.az_min"),
+        value=str(dome_limits.get("az_min", 0.0)),
+    )
+    tf_az_max = ft.TextField(
+        label=t("settings.az_max"),
+        value=str(dome_limits.get("az_max", 360.0)),
+    )
+
     # -- Tab layout -------------------------------------------------------
     # Flet 0.80 Tabs API: Tabs wraps a TabBar + TabBarView.
     _tab_defs = [
@@ -275,7 +286,9 @@ def show_settings_dialog(
             sw_protrudes, tf_safe_altitude,
             _section_header(t("settings.group.slew_limits")),
             tf_max_nudge,
-        ], spacing=6, expand=True)),
+            _section_header(t("settings.group.rotation_limits")),
+            tf_az_min, tf_az_max,
+        ], spacing=6, scroll=ft.ScrollMode.AUTO, expand=True)),
     ]
 
     tabs = ft.Tabs(
@@ -393,6 +406,11 @@ def show_settings_dialog(
         new_cfg["safety"]["max_nudge_while_protruding"] = _to_float(
             tf_max_nudge.value, 2.0
         )
+
+        # Dome rotation limits
+        new_cfg.setdefault("dome", {})
+        new_cfg["dome"]["az_min"] = _to_float(tf_az_min.value, 0.0)
+        new_cfg["dome"]["az_max"] = _to_float(tf_az_max.value, 360.0)
 
         # Persist to YAML
         try:

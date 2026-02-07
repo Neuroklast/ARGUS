@@ -178,6 +178,40 @@ _translations: Dict[str, Dict[str, str]] = {
         "banner.telescope":                 "Telescope",
         "banner.camera":                    "Camera",
         "banner.motor":                     "Motor",
+
+        # ── Help dialog ─────────────────────────────────────────────
+        "gui.help_tooltip":                 "Help",
+        "gui.setup_wizard":                 "Setup Wizard",
+        "help.title":                       "ARGUS \u2013 Help",
+        "help.quick_start_title":           "Quick Start",
+        "help.quick_start_body":            "1. Connect your telescope mount, dome motor controller, and camera via USB.\n2. Use Settings (\u2699) to configure serial port, telescope driver, and dome geometry.\n3. Switch to AUTO-SLAVE mode for automatic dome tracking.\n4. Run Diagnostics to verify all connections.",
+        "help.modes_title":                 "Operating Modes",
+        "help.modes_body":                  "\u2022 MANUAL \u2013 Control the dome with the CCW/CW buttons.\n\u2022 AUTO-SLAVE \u2013 Dome follows the telescope automatically.\n\u2022 CALIBRATE \u2013 Collects data points for offset calibration.",
+        "help.troubleshooting_title":       "Troubleshooting",
+        "help.troubleshooting_body":        "\u2022 No serial port? Check USB cable and drivers.\n\u2022 Telescope not found? Verify ASCOM driver and ProgID.\n\u2022 Camera black? Try a different camera index in Settings.\n\u2022 Run Diagnostics for detailed system checks.",
+
+        # ── Setup wizard ─────────────────────────────────────────────
+        "wizard.title":                     "ARGUS \u2013 Setup Wizard",
+        "wizard.next":                      "Next \u25b6",
+        "wizard.back":                      "\u25c0 Back",
+        "wizard.finish":                    "Finish \u2713",
+        "wizard.step_location_title":       "Step 1: Observatory Location",
+        "wizard.step_location_help":        "Enter your observatory\u2019s geographic coordinates. These are used to compute accurate dome positions based on the telescope\u2019s celestial pointing direction. You can find your coordinates using Google Maps or a GPS device.",
+        "wizard.step_hardware_title":       "Step 2: Hardware Connection",
+        "wizard.step_hardware_help":        "Configure the serial port and baud rate for communication with your dome motor controller (Arduino). Common values are COM3 (Windows) or /dev/ttyUSB0 (Linux) at 9600 baud.",
+        "wizard.step_dome_title":           "Step 3: Dome Geometry & Limits",
+        "wizard.step_dome_help":            "Set the physical dimensions of your dome and optional rotation limits. If cables are attached to the dome that could tear, set azimuth limits to restrict the rotation range.",
+        "wizard.step_finish_title":         "Setup Complete",
+        "wizard.step_finish_help":          "Your basic configuration is ready. You can fine-tune additional settings (ASCOM, vision, safety) via the Settings panel (\u2699) at any time. Run Diagnostics to verify everything works.",
+
+        # ── Dome rotation limits ─────────────────────────────────────
+        "settings.az_min":                  "Min Azimuth Limit (\u00b0)",
+        "settings.az_max":                  "Max Azimuth Limit (\u00b0)",
+        "settings.group.rotation_limits":   "Rotation Limits",
+
+        # ── Diagnostics tips ─────────────────────────────────────────
+        "diag.tips_title":                  "\U0001f527 Troubleshooting Tips",
+        "diag.tips_body":                   "\u2022 Check that all USB cables are securely connected.\n\u2022 Restart ARGUS after changing hardware connections.\n\u2022 Verify that no other program is using the same serial port.\n\u2022 On Windows, check Device Manager for COM port assignments.\n\u2022 Use the Setup Wizard to reconfigure basic settings.",
     },
 
     "de": {
@@ -331,6 +365,40 @@ _translations: Dict[str, Dict[str, str]] = {
         "banner.telescope":                 "Teleskop",
         "banner.camera":                    "Kamera",
         "banner.motor":                     "Motor",
+
+        # ── Hilfedialog ─────────────────────────────────────────────
+        "gui.help_tooltip":                 "Hilfe",
+        "gui.setup_wizard":                 "Einrichtungsassistent",
+        "help.title":                       "ARGUS \u2013 Hilfe",
+        "help.quick_start_title":           "Schnellstart",
+        "help.quick_start_body":            "1. Verbinden Sie Teleskopmontierung, Kuppelmotor und Kamera per USB.\n2. Konfigurieren Sie in den Einstellungen (\u2699) den seriellen Anschluss, den Teleskoptreiber und die Kuppelgeometrie.\n3. Wechseln Sie in den AUTOMATIK-Modus f\u00fcr automatische Kuppelnachf\u00fchrung.\n4. F\u00fchren Sie die Diagnose aus, um alle Verbindungen zu pr\u00fcfen.",
+        "help.modes_title":                 "Betriebsmodi",
+        "help.modes_body":                  "\u2022 MANUELL \u2013 Steuern Sie die Kuppel mit den CCW/CW-Tasten.\n\u2022 AUTOMATIK \u2013 Die Kuppel folgt dem Teleskop automatisch.\n\u2022 KALIBRIEREN \u2013 Sammelt Datenpunkte f\u00fcr die Offset-Kalibrierung.",
+        "help.troubleshooting_title":       "Fehlerbehebung",
+        "help.troubleshooting_body":        "\u2022 Kein serieller Anschluss? USB-Kabel und Treiber pr\u00fcfen.\n\u2022 Teleskop nicht gefunden? ASCOM-Treiber und ProgID \u00fcberpr\u00fcfen.\n\u2022 Kamera schwarz? Anderen Kamera-Index in den Einstellungen versuchen.\n\u2022 Diagnose f\u00fcr detaillierte Systempr\u00fcfungen ausf\u00fchren.",
+
+        # ── Einrichtungsassistent ─────────────────────────────────────
+        "wizard.title":                     "ARGUS \u2013 Einrichtungsassistent",
+        "wizard.next":                      "Weiter \u25b6",
+        "wizard.back":                      "\u25c0 Zur\u00fcck",
+        "wizard.finish":                    "Fertig \u2713",
+        "wizard.step_location_title":       "Schritt 1: Observatoriumsstandort",
+        "wizard.step_location_help":        "Geben Sie die geografischen Koordinaten Ihres Observatoriums ein. Diese werden verwendet, um genaue Kuppelpositionen basierend auf der Himmelsausrichtung des Teleskops zu berechnen. Sie finden Ihre Koordinaten z.\u00a0B. \u00fcber Google Maps oder ein GPS-Ger\u00e4t.",
+        "wizard.step_hardware_title":       "Schritt 2: Hardware-Verbindung",
+        "wizard.step_hardware_help":        "Konfigurieren Sie den seriellen Anschluss und die Baudrate f\u00fcr die Kommunikation mit dem Kuppelmotor-Controller (Arduino). \u00dcbliche Werte sind COM3 (Windows) oder /dev/ttyUSB0 (Linux) bei 9600 Baud.",
+        "wizard.step_dome_title":           "Schritt 3: Kuppelgeometrie & Grenzen",
+        "wizard.step_dome_help":            "Geben Sie die physischen Ma\u00dfe Ihrer Kuppel und optionale Drehgrenzen ein. Falls Kabel an der Kuppel befestigt sind, die abreißen k\u00f6nnten, legen Sie Azimutgrenzen fest, um den Drehbereich einzuschr\u00e4nken.",
+        "wizard.step_finish_title":         "Einrichtung abgeschlossen",
+        "wizard.step_finish_help":          "Ihre Grundkonfiguration ist fertig. Weitere Einstellungen (ASCOM, Bildverarbeitung, Sicherheit) k\u00f6nnen Sie jederzeit \u00fcber das Einstellungsmen\u00fc (\u2699) anpassen. F\u00fchren Sie die Diagnose aus, um alles zu \u00fcberpr\u00fcfen.",
+
+        # ── Kuppeldrehgrenzen ─────────────────────────────────────────
+        "settings.az_min":                  "Min. Azimutgrenze (\u00b0)",
+        "settings.az_max":                  "Max. Azimutgrenze (\u00b0)",
+        "settings.group.rotation_limits":   "Drehgrenzen",
+
+        # ── Diagnosetipps ─────────────────────────────────────────────
+        "diag.tips_title":                  "\U0001f527 Tipps zur Fehlerbehebung",
+        "diag.tips_body":                   "\u2022 Pr\u00fcfen Sie, dass alle USB-Kabel fest angeschlossen sind.\n\u2022 Starten Sie ARGUS nach \u00c4nderungen an der Hardware neu.\n\u2022 Stellen Sie sicher, dass kein anderes Programm denselben seriellen Anschluss verwendet.\n\u2022 Unter Windows pr\u00fcfen Sie den Ger\u00e4te-Manager f\u00fcr COM-Port-Zuweisungen.\n\u2022 Verwenden Sie den Einrichtungsassistenten, um Grundeinstellungen neu zu konfigurieren.",
     },
 }
 

@@ -299,6 +299,31 @@ class SystemDiagnostics:
                 status=Status.OK, message=f"{rate} Hz",
             ))
 
+        # Dome rotation limits
+        dome_limits = self.config.get("dome", {})
+        az_min = dome_limits.get("az_min", 0.0)
+        az_max = dome_limits.get("az_max", 360.0)
+        if az_min != 0.0 or az_max != 360.0:
+            if az_min >= az_max:
+                results.append(DiagResult(
+                    category="Config", name="Rotation Limits",
+                    status=Status.ERROR,
+                    message=f"az_min ({az_min}°) must be less than az_max ({az_max}°)",
+                    suggestion="Check dome rotation limits in Settings → Safety → Rotation Limits.",
+                ))
+            else:
+                results.append(DiagResult(
+                    category="Config", name="Rotation Limits",
+                    status=Status.INFO,
+                    message=f"Dome restricted to {az_min}° – {az_max}° (cable protection active)",
+                ))
+        else:
+            results.append(DiagResult(
+                category="Config", name="Rotation Limits",
+                status=Status.OK,
+                message="Full 360° rotation allowed",
+            ))
+
         return results
 
     # ---- ASCOM / Telescope checks -----------------------------------------
