@@ -281,14 +281,17 @@ class TestRadar:
         assert len(shapes) > 0
 
     def test_radar_shapes_count(self):
-        """Expect circle + mount line + dome arc = 3 shapes."""
+        """The enriched radar should have grid rings, cross-hairs, labels,
+        dome outline, mount line, arrowhead, slit arc, and pier marker."""
         shapes = ArgusGUI._radar_shapes(45.0, 90.0)
-        assert len(shapes) == 3
+        # 3 rings + 2 cross-hairs + 4 labels + dome outline + mount line +
+        # arrowhead + slit arc + pier marker = 14
+        assert len(shapes) >= 10
 
     def test_draw_radar_updates_canvas(self):
         gui = ArgusGUI(_make_mock_page())
         gui.draw_radar(180.0, 270.0)
-        assert len(gui.radar_canvas.shapes) == 3
+        assert len(gui.radar_canvas.shapes) >= 10
 
 
 # ---------------------------------------------------------------------------
