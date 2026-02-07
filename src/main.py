@@ -714,7 +714,7 @@ class ArgusController:
             pass
 
     # ---- Camera preview for the GUI ------------------------------------
-    _PREVIEW_INTERVAL = 0.2  # max ~5 fps for camera preview
+    PREVIEW_INTERVAL = 0.2  # max ~5 fps for camera preview
 
     def __init_preview_state(self):
         """Lazily initialise preview timing state."""
@@ -726,7 +726,7 @@ class ArgusController:
         self.__init_preview_state()
         import time as _time
         now = _time.time()
-        if now - self._last_preview_time < self._PREVIEW_INTERVAL:
+        if now - self._last_preview_time < self.PREVIEW_INTERVAL:
             return
         self._last_preview_time = now
 

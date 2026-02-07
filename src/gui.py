@@ -488,7 +488,7 @@ class ArgusGUI:
     # Night mode / theme toggle
     # ===================================================================
     def toggle_night_mode(self) -> None:
-        """Switch between NASA light theme and red/black night mode."""
+        """Switch between NASA Mission Control theme and Night-Vision red/black mode."""
         self._night_mode = not self._night_mode
         self._theme = dict(THEME_NIGHT) if self._night_mode else dict(THEME_DARK)
 
