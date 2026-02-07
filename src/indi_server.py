@@ -57,13 +57,15 @@ class INDIDomeServer:
     # INDI XML helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _number_vector(name: str, state: str, values: dict[str, float]) -> str:
+    def _number_vector(name: str, state: str, values: dict[str, float],
+                       min_val: float = 0, max_val: float = 360,
+                       step: float = 0.1) -> str:
         """Build an INDI ``defNumberVector`` or ``setNumberVector`` XML."""
         elements = ""
         for ename, val in values.items():
             elements += (
                 f'  <defNumber name="{ename}" label="{ename}" '
-                f'format="%g" min="0" max="360" step="0.1">{val}</defNumber>\n'
+                f'format="%g" min="{min_val}" max="{max_val}" step="{step}">{val}</defNumber>\n'
             )
         return (
             f'<defNumberVector device="{DEVICE_NAME}" name="{name}" '

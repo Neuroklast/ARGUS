@@ -52,8 +52,10 @@ void setup() {
   digitalWrite(SHUTTER_OPEN_PIN, LOW);
   digitalWrite(SHUTTER_CLOSE_PIN, LOW);
 
-  // Configure rain sensor with interrupt
-  pinMode(RAIN_SENSOR_PIN, INPUT_PULLUP);
+  // Configure rain sensor: active-HIGH means rain detected when pin goes HIGH.
+  // Use INPUT (no internal pull) when sensor has its own pull-down, or
+  // INPUT_PULLUP with FALLING if sensor pulls LOW on rain.
+  pinMode(RAIN_SENSOR_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(RAIN_SENSOR_PIN), onRainDetected, RISING);
 
   lastCommandMillis = millis();

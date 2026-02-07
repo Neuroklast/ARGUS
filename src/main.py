@@ -824,6 +824,7 @@ class ArgusController:
 
     # ---- Periodic hardware reconnection ---------------------------------
     _RECONNECT_INTERVAL = 10.0  # seconds between reconnection attempts
+    _PING_INTERVAL = 10.0       # seconds between heartbeat PINGs
 
     def _try_reconnect_hardware(self) -> None:
         """Attempt to reconnect disconnected hardware components.
@@ -1042,7 +1043,7 @@ class ArgusController:
                 self._try_reconnect_hardware()
 
             # -- Heartbeat PING to Arduino watchdog -----------------------
-            if now - self._last_ping_time >= self._RECONNECT_INTERVAL and self.serial and self.serial.connected:
+            if now - self._last_ping_time >= self._PING_INTERVAL and self.serial and self.serial.connected:
                 self._last_ping_time = now
                 self.serial.send_ping()
 
