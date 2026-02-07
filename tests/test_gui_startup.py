@@ -146,12 +146,19 @@ class TestTelemetryUpdate:
         # Error should be +3.0
         assert "+003.0" in gui.lbl_error.value
 
-    def test_update_telemetry_error_wrap_around(self):
-        """Error should normalise across the 0°/360° boundary."""
+    def test_update_telemetry_error_wrap_positive(self):
+        """Error should normalise across the 0°/360° boundary (positive)."""
         gui = ArgusGUI(_make_mock_page())
         gui.update_telemetry(5.0, 355.0)
         # Difference is 5 - 355 = -350, normalised to +10
         assert "+010.0" in gui.lbl_error.value
+
+    def test_update_telemetry_error_wrap_negative(self):
+        """Error should normalise across the 0°/360° boundary (negative)."""
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_telemetry(355.0, 5.0)
+        # Difference is 355 - 5 = 350, normalised to -10
+        assert "-010.0" in gui.lbl_error.value
 
     def test_update_telemetry_calls_page_update(self):
         page = _make_mock_page()
