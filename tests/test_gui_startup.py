@@ -586,3 +586,57 @@ class TestFailsafe:
         ctrl._crash_handler(*exc_info)
         assert ctrl.sensor.slew_rate == 0.0
         assert ctrl._running is False
+
+
+# ---------------------------------------------------------------------------
+# resolve_path
+# ---------------------------------------------------------------------------
+class TestResolvePath:
+    """Verify that resolve_path checks both base path and _MEIPASS."""
+
+    def test_resolve_existing_file(self):
+        """resolve_path returns an existing file from the base path."""
+        from path_utils import resolve_path
+        result = resolve_path("config.yaml")
+        assert result.name == "config.yaml"
+        assert result.is_file()
+
+    def test_resolve_existing_directory(self):
+        """resolve_path returns an existing directory from the base path."""
+        from path_utils import resolve_path
+        result = resolve_path("assets")
+        assert result.name == "assets"
+        assert result.is_dir()
+
+    def test_resolve_missing_returns_base_path(self):
+        """resolve_path returns base_path / relative for missing resources."""
+        from path_utils import resolve_path, get_base_path
+        result = resolve_path("nonexistent_resource_xyz")
+        assert result == get_base_path() / "nonexistent_resource_xyz"
+
+    def test_resolve_checks_meipass_when_frozen(self, tmp_path):
+        """In frozen mode, resolve_path falls back to sys._MEIPASS."""
+        from path_utils import resolve_path
+        # Create a fake file in a temp dir simulating _MEIPASS
+        (tmp_path / "bundled_file.txt").write_text("data")
+        with patch.object(sys, "frozen", True, create=True), \
+             patch.object(sys, "_MEIPASS", str(tmp_path), create=True):
+            result = resolve_path("bundled_file.txt")
+            assert result.is_file()
+            assert result.parent == tmp_path
+
+
+# ---------------------------------------------------------------------------
+# Settings dialog (Tab API compatibility)
+# ---------------------------------------------------------------------------
+class TestSettingsDialog:
+    """Verify that the settings dialog uses the Flet 0.80+ Tabs API."""
+
+    def test_show_settings_dialog_does_not_raise(self):
+        """Calling show_settings_dialog must not crash (Tab API)."""
+        from settings_gui import show_settings_dialog
+        page = _make_mock_page()
+        page.overlay = []
+        show_settings_dialog(page, {}, lambda cfg: None)
+        # Dialog was appended to overlay
+        assert len(page.overlay) == 1

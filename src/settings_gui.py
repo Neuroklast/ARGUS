@@ -16,11 +16,11 @@ from typing import Optional, Callable
 import yaml
 import flet as ft
 
-from path_utils import get_base_path
+from path_utils import resolve_path
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = get_base_path() / "config.yaml"
+DEFAULT_CONFIG_PATH = resolve_path("config.yaml")
 
 # ArUco dictionary options for the dropdown
 ARUCO_DICTIONARIES = [
@@ -220,37 +220,47 @@ def show_settings_dialog(
     )
 
     # -- Tab layout -------------------------------------------------------
+    # Flet 0.80+ API: content is a flat [Tab, Body, Tab, Body, …] list
+    # and ``length`` specifies the number of tab pairs.
     tabs = ft.Tabs(
         selected_index=0,
-        tabs=[
-            ft.Tab(text="Hardware", content=ft.Column([
+        content=[
+            ft.Tab(label="Hardware"),
+            ft.Column([
                 tf_serial_port, tf_baud_rate,
                 dd_motor_type, dd_protocol,
                 tf_steps_per_degree, tf_ticks_per_degree,
                 tf_degrees_per_second, tf_encoder_tolerance,
                 sw_homing_enabled, tf_homing_azimuth, dd_homing_direction,
-            ], spacing=8, scroll=ft.ScrollMode.AUTO)),
-            ft.Tab(text="Vision", content=ft.Column([
+            ], spacing=8, scroll=ft.ScrollMode.AUTO),
+            ft.Tab(label="Vision"),
+            ft.Column([
                 dd_camera_index, tf_marker_size,
                 tf_res_width, tf_res_height, dd_aruco_dict,
-            ], spacing=8, scroll=ft.ScrollMode.AUTO)),
-            ft.Tab(text="ASCOM", content=ft.Column([
+            ], spacing=8, scroll=ft.ScrollMode.AUTO),
+            ft.Tab(label="ASCOM"),
+            ft.Column([
                 tf_prog_id,
-            ], spacing=8)),
-            ft.Tab(text="Location", content=ft.Column([
+            ], spacing=8),
+            ft.Tab(label="Location"),
+            ft.Column([
                 tf_latitude, tf_longitude, tf_elevation,
-            ], spacing=8)),
-            ft.Tab(text="Geometry", content=ft.Column([
+            ], spacing=8),
+            ft.Tab(label="Geometry"),
+            ft.Column([
                 tf_dome_radius, tf_slit_width,
                 tf_pier_height, tf_gem_offset_east, tf_gem_offset_north,
-            ], spacing=8, scroll=ft.ScrollMode.AUTO)),
-            ft.Tab(text="Control", content=ft.Column([
+            ], spacing=8, scroll=ft.ScrollMode.AUTO),
+            ft.Tab(label="Control"),
+            ft.Column([
                 sw_drift, tf_correction_threshold, tf_max_speed, tf_update_rate,
-            ], spacing=8)),
-            ft.Tab(text="Safety", content=ft.Column([
+            ], spacing=8),
+            ft.Tab(label="Safety"),
+            ft.Column([
                 sw_protrudes, tf_safe_altitude, tf_max_nudge,
-            ], spacing=8)),
+            ], spacing=8),
         ],
+        length=7,
         expand=True,
     )
 
@@ -380,7 +390,7 @@ def show_settings_dialog(
         ),
         actions=[
             ft.TextButton("CANCEL", on_click=_on_cancel),
-            ft.ElevatedButton("SAVE", on_click=_on_save),
+            ft.Button("SAVE", on_click=_on_save),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )
