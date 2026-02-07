@@ -92,6 +92,10 @@ _translations: Dict[str, Dict[str, str]] = {
         "gui.sim_telescope_alt":            "Tel ALT",
         "gui.open_slit":                    "Open Slit",
         "gui.close_slit":                   "Close Slit",
+        "gui.auto_calibrate":               "Auto-Calibrate",
+        "gui.calibration_ready":            "Press Start to begin automatic calibration.",
+        "gui.calibration_info":             "The telescope will slew to 4 cardinal points.\nDome offsets (GEM, pier height) will be computed automatically.",
+        "gui.start":                        "Start",
 
         # ── Settings ─────────────────────────────────────────────────
         "settings.window_title":            "ARGUS \u2013 Settings",
@@ -245,6 +249,10 @@ _translations: Dict[str, Dict[str, str]] = {
         "gui.sim_telescope_alt":            "Tel ALT",
         "gui.open_slit":                    "Spalt \u00f6ffnen",
         "gui.close_slit":                   "Spalt schlie\u00dfen",
+        "gui.auto_calibrate":               "Auto-Kalibrierung",
+        "gui.calibration_ready":            "Start dr\u00fccken, um die automatische Kalibrierung zu beginnen.",
+        "gui.calibration_info":             "Das Teleskop wird zu 4 Kardinalpunkten schwenken.\nKuppel-Offsets (GEM, Pierh\u00f6he) werden automatisch berechnet.",
+        "gui.start":                        "Starten",
 
         # ── Einstellungen ────────────────────────────────────────────
         "settings.window_title":            "ARGUS \u2013 Einstellungen",

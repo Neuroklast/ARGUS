@@ -72,6 +72,11 @@ except ImportError:                     # pragma: no cover
     AlpacaDomeServer = None             # type: ignore[assignment,misc]
 
 try:
+    from indi_server import INDIDomeServer
+except ImportError:                     # pragma: no cover
+    INDIDomeServer = None               # type: ignore[assignment,misc]
+
+try:
     from data_loader import load_calibration_data
 except ImportError:                     # pragma: no cover
     load_calibration_data = None        # type: ignore[assignment,misc]
@@ -156,6 +161,7 @@ DEFAULT_CONFIG: dict = {
         "drift_correction_enabled": True,
         "correction_threshold": 0.5,
         "max_speed": 100,
+        "latency_compensation_ms": 0,
     },
     "logging": {
         "level": "INFO",
@@ -313,6 +319,7 @@ class ArgusController:
         self._last_vision_ok: bool = True
         self._health: str = HEALTH_HEALTHY
         self._last_reconnect_time: float = 0.0
+        self._last_ping_time: float = 0.0
 
         # -- Alpaca / slaving state --------------------------------------
         self.is_slaved: bool = False
@@ -370,6 +377,7 @@ class ArgusController:
                 gui.page, self.config, self._on_settings_saved,
             )
             gui.btn_diagnostics.on_click = lambda e: self._run_diagnostics()
+            gui.btn_auto_calibrate.on_click = lambda e: self._start_calibration_wizard()
 
             # Simulation controls
             gui.sim_az_slider.on_change = lambda e: self._on_sim_az_changed(
@@ -473,6 +481,7 @@ class ArgusController:
             obs = math_cfg.get("observatory", {})
             dome = math_cfg.get("dome", {})
             mount = math_cfg.get("mount", {})
+            ctrl_cfg = self.config.get("control", {})
             self.math_utils = MathUtils(
                 latitude=obs.get("latitude", 0.0),
                 longitude=obs.get("longitude", 0.0),
@@ -481,6 +490,7 @@ class ArgusController:
                 pier_height=mount.get("pier_height", 1.5),
                 gem_offset_east=mount.get("gem_offset_east", 0.0),
                 gem_offset_north=mount.get("gem_offset_north", 0.0),
+                latency_compensation_ms=ctrl_cfg.get("latency_compensation_ms", 0.0),
             )
         except Exception as exc:
             logger.error("Failed to initialize MathUtils: %s", exc)
@@ -1031,6 +1041,11 @@ class ArgusController:
                 self._last_reconnect_time = now
                 self._try_reconnect_hardware()
 
+            # -- Heartbeat PING to Arduino watchdog -----------------------
+            if now - self._last_ping_time >= self._RECONNECT_INTERVAL and self.serial and self.serial.connected:
+                self._last_ping_time = now
+                self.serial.send_ping()
+
             # -- Health check (cyclic) ------------------------------------
             health = self.check_system_health()
             if health == HEALTH_CRITICAL and current_mode == "AUTO-SLAVE":
@@ -1074,6 +1089,9 @@ class ArgusController:
                         side_of_pier=telescope_data.get("side_of_pier"),
                     )
                     target_az = normalize_azimuth(target_az)
+
+                    # Step 2b – predictive look-ahead extrapolation
+                    target_az = self.math_utils.extrapolate_azimuth(target_az)
 
                     # Step 3 – vision drift correction (only if HEALTHY)
                     if drift_enabled and self.vision and health == HEALTH_HEALTHY:
@@ -1297,7 +1315,87 @@ class ArgusController:
             with self._lock:
                 self._mode = old_mode
 
-    # ---- Demo / Replay mode ---------------------------------------------
+    def _start_calibration_wizard(self) -> None:
+        """Show the auto-calibration wizard and run calibration in background."""
+        if self.gui is None:
+            return
+
+        def _on_wizard_start(dlg, progress_text, progress_bar):
+            def _bg_calibrate():
+                try:
+                    if OffsetSolver is None:
+                        progress_text.value = "Calibration module not available"
+                        self.gui.page.update()
+                        return
+
+                    solver = OffsetSolver()
+                    cal_points = [
+                        (0.0, 45.0, "North"),
+                        (90.0, 45.0, "East"),
+                        (180.0, 45.0, "South"),
+                        (270.0, 45.0, "West"),
+                    ]
+
+                    old_mode = self.mode
+                    with self._lock:
+                        self._mode = "CALIBRATION"
+
+                    try:
+                        for i, (az, alt, label) in enumerate(cal_points):
+                            progress_bar.value = (i + 0.5) / len(cal_points)
+                            progress_text.value = f"Point {i+1}/{len(cal_points)}: {label} (Az={az}°, Alt={alt}°)"
+                            try:
+                                self.gui.page.update()
+                            except Exception:
+                                pass
+
+                            self.safe_slew_dome(az)
+
+                            if self.ascom and hasattr(self.ascom, "telescope") and self.ascom.telescope:
+                                try:
+                                    self.ascom.telescope.SlewToAltAz(az, alt)
+                                    while self.ascom.telescope.Slewing:
+                                        time.sleep(0.5)
+                                except Exception as exc:
+                                    logger.warning("Telescope slew failed at %s: %s", label, exc)
+
+                            dome_az = self.sensor.get_azimuth()
+                            solver.add_point(az, alt, dome_az)
+
+                            progress_bar.value = (i + 1) / len(cal_points)
+                            try:
+                                self.gui.page.update()
+                            except Exception:
+                                pass
+
+                        result = solver.solve()
+                        if result is not None:
+                            mount = self.config.setdefault("math", {}).setdefault("mount", {})
+                            mount["gem_offset_east"] = result["gem_offset_east"]
+                            mount["gem_offset_north"] = result["gem_offset_north"]
+                            mount["pier_height"] = result["pier_height"]
+                            save_config(self.config)
+                            self._init_math_utils()
+                            progress_text.value = (
+                                f"Calibration complete: E={result['gem_offset_east']:.3f}m, "
+                                f"N={result['gem_offset_north']:.3f}m, H={result['pier_height']:.3f}m"
+                            )
+                        else:
+                            progress_text.value = "Calibration failed – not enough points"
+                    finally:
+                        with self._lock:
+                            self._mode = old_mode
+                except Exception as exc:
+                    logger.error("Calibration wizard error: %s", exc)
+                    progress_text.value = f"Error: {exc}"
+                try:
+                    self.gui.page.update()
+                except Exception:
+                    pass
+
+            threading.Thread(target=_bg_calibrate, daemon=True).start()
+
+        self.gui.show_calibration_wizard(_on_wizard_start)
     def _run_demo_sequence(self, csv_path: str, speed: float = 1.0) -> None:
         """Play back a recorded session from a CSV file.
 
@@ -1507,11 +1605,21 @@ def main(page: ft.Page):
                 except Exception as exc:
                     logger.warning("Failed to start Alpaca server: %s", exc)
 
+            # Start INDI server (if available)
+            indi = None
+            if INDIDomeServer is not None:
+                try:
+                    indi = INDIDomeServer(controller)
+                    indi.start()
+                except Exception as exc:
+                    logger.warning("Failed to start INDI server: %s", exc)
+
             _update_splash(0.85, t("splash.start_loop"))
             time.sleep(_SPLASH_STEP_DELAY * 1.5)
 
             page._argus_controller = controller
             page._argus_alpaca = alpaca
+            page._argus_indi = indi
 
             _update_splash(1.0, t("splash.ready"))
             time.sleep(0.3)

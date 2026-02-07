@@ -217,3 +217,16 @@ class SerialController:
             Status string or None if error
         """
         return self.send_and_receive("STATUS")
+
+    def send_ping(self) -> bool:
+        """Send a heartbeat PING to the Arduino watchdog.
+
+        The firmware resets its watchdog timer on every received command.
+        This dedicated PING command is lightweight and should be called
+        periodically (e.g. every 10-30 s) to prevent the watchdog from
+        closing the shutter.
+
+        Returns:
+            True if the command was sent successfully.
+        """
+        return self.send_command("PING")

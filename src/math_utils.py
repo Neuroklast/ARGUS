@@ -10,6 +10,7 @@ including GEM (German Equatorial Mount) offset corrections.
 """
 
 import logging
+import time
 import numpy as np
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz
 from astropy.time import Time
@@ -22,7 +23,8 @@ class MathUtils:
     
     def __init__(self, latitude: float, longitude: float, elevation: float,
                  dome_radius: float, pier_height: float,
-                 gem_offset_east: float = 0.0, gem_offset_north: float = 0.0):
+                 gem_offset_east: float = 0.0, gem_offset_north: float = 0.0,
+                 latency_compensation_ms: float = 0.0):
         """
         Initialize mathematical utilities.
         
@@ -34,6 +36,11 @@ class MathUtils:
             pier_height: Telescope pier height in meters
             gem_offset_east: GEM offset in east direction (meters)
             gem_offset_north: GEM offset in north direction (meters)
+            latency_compensation_ms: Look-ahead time in milliseconds for
+                predictive dome slaving.  When > 0 the dome target azimuth
+                is extrapolated based on the current telescope slew velocity
+                so that the slit is already at the correct position when
+                the telescope arrives.
         """
         self.logger = logging.getLogger(__name__)
         
@@ -50,10 +57,16 @@ class MathUtils:
         self.gem_offset_east = gem_offset_east
         self.gem_offset_north = gem_offset_north
         
+        # Predictive slaving (look-ahead)
+        self.latency_compensation_ms = max(0.0, latency_compensation_ms)
+        self._prev_azimuth: Optional[float] = None
+        self._prev_time: Optional[float] = None
+        
         self.logger.info(
             "MathUtils initialized: lat=%s, lon=%s, "
-            "dome_r=%sm, pier_h=%sm",
+            "dome_r=%sm, pier_h=%sm, look_ahead=%sms",
             latitude, longitude, dome_radius, pier_height,
+            latency_compensation_ms,
         )
     
     def ra_dec_to_altaz(self, ra: float, dec: float, 
@@ -187,7 +200,65 @@ class MathUtils:
         )
         
         return dome_azimuth
-    
+
+    def extrapolate_azimuth(self, current_azimuth: float) -> float:
+        """Apply linear look-ahead extrapolation to compensate for latency.
+
+        Estimates the telescope's angular velocity from consecutive calls
+        and adds ``latency_compensation_ms`` worth of predicted motion to
+        the target azimuth.  This prevents the dome slit from lagging
+        behind during fast slews (satellite tracking) or when the
+        communication chain introduces noticeable delay.
+
+        Args:
+            current_azimuth: The dome target azimuth calculated from the
+                current telescope position (degrees, 0-360).
+
+        Returns:
+            Extrapolated dome azimuth in degrees (0-360).  When
+            ``latency_compensation_ms`` is 0 or there is not enough
+            history, *current_azimuth* is returned unchanged.
+        """
+        if self.latency_compensation_ms <= 0:
+            return current_azimuth
+
+        now = time.time()
+
+        if self._prev_azimuth is None or self._prev_time is None:
+            self._prev_azimuth = current_azimuth
+            self._prev_time = now
+            return current_azimuth
+
+        dt = now - self._prev_time
+        if dt < 1e-6:
+            return current_azimuth
+
+        # Angular velocity (degrees/second), wrapped to ±180°
+        delta = current_azimuth - self._prev_azimuth
+        if delta > 180:
+            delta -= 360
+        elif delta < -180:
+            delta += 360
+
+        velocity = delta / dt  # deg/s
+
+        # Extrapolate
+        look_ahead_s = self.latency_compensation_ms / 1000.0
+        predicted = current_azimuth + velocity * look_ahead_s
+
+        # Normalise to 0-360
+        predicted = predicted % 360.0
+
+        self.logger.debug(
+            "Look-ahead: vel=%.2f°/s, dt=%.3fs, "
+            "current=%.2f° -> predicted=%.2f°",
+            velocity, dt, current_azimuth, predicted,
+        )
+
+        self._prev_azimuth = current_azimuth
+        self._prev_time = now
+        return predicted
+
     def apply_drift_correction(self, target_azimuth: float, 
                                drift_pixels: Tuple[float, float],
                                pixels_per_degree: float = 10.0) -> float:
