@@ -56,6 +56,7 @@ control:
   drift_correction_enabled: true
   correction_threshold: 0.5  # degrees
   max_speed: 100  # motor speed units
+  latency_compensation_ms: 0  # Look-ahead prediction (ms). Set >0 to enable predictive slaving.
   
 # Logging
 logging:

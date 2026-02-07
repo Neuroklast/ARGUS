@@ -313,6 +313,12 @@ class ArgusGUI:
             icon_size=24,
         )
 
+        # Auto-calibrate button
+        self.btn_auto_calibrate = ft.IconButton(
+            icon=ft.Icons.ARCHITECTURE, tooltip=t("gui.auto_calibrate"),
+            icon_size=24,
+        )
+
         # Theme cycle button (dark → day → night → dark)
         self.btn_night_mode = ft.IconButton(
             icon=ft.Icons.NIGHTLIGHT_ROUND,
@@ -447,6 +453,7 @@ class ArgusGUI:
                      color=self._theme["heading"]),
             ft.Row([
                 self.btn_night_mode,
+                self.btn_auto_calibrate,
                 self.btn_diagnostics,
                 self.btn_settings,
             ], spacing=0),
@@ -1042,6 +1049,64 @@ class ArgusGUI:
             self.page.update()
         except Exception:
             pass
+
+    # -- Auto-calibration wizard -----------------------------------------
+    def show_calibration_wizard(self, on_start_callback) -> ft.AlertDialog:
+        """Show the auto-calibration wizard dialog.
+
+        The wizard displays progress for each calibration point and calls
+        *on_start_callback* with the dialog when the user clicks Start.
+
+        Args:
+            on_start_callback: ``callable(dlg, progress_text, progress_bar)``
+                invoked when the user presses Start.
+
+        Returns:
+            The dialog instance.
+        """
+        progress_bar = ft.ProgressBar(width=400, value=0)
+        progress_text = ft.Text(
+            t("gui.calibration_ready"), size=12, text_align=ft.TextAlign.CENTER,
+        )
+        info_text = ft.Text(
+            t("gui.calibration_info"),
+            size=11, color="#CCCCCC", text_align=ft.TextAlign.CENTER,
+        )
+
+        dlg = ft.AlertDialog(
+            title=ft.Text(t("gui.auto_calibrate")),
+            content=ft.Container(
+                content=ft.Column([
+                    info_text,
+                    ft.Divider(height=1, color="#333333"),
+                    progress_bar,
+                    progress_text,
+                ], alignment=ft.MainAxisAlignment.CENTER,
+                   horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                   spacing=12),
+                width=480,
+                height=200,
+            ),
+            actions=[
+                ft.TextButton(
+                    t("gui.start"),
+                    on_click=lambda e: on_start_callback(
+                        dlg, progress_text, progress_bar,
+                    ),
+                ),
+                ft.TextButton(
+                    t("gui.close"),
+                    on_click=lambda e: self._close_dialog(dlg),
+                ),
+            ],
+        )
+        self.page.overlay.append(dlg)
+        dlg.open = True
+        try:
+            self.page.update()
+        except Exception:
+            pass
+        return dlg
 
 
 # -----------------------------------------------------------------------
