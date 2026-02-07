@@ -309,7 +309,7 @@ class SystemDiagnostics:
                     category="Config", name="Rotation Limits",
                     status=Status.ERROR,
                     message=f"az_min ({az_min}°) must be less than az_max ({az_max}°)",
-                    suggestion="Check dome rotation limits in Settings → Safety.",
+                    suggestion="Check dome rotation limits in Settings → Safety → Rotation Limits.",
                 ))
             else:
                 results.append(DiagResult(

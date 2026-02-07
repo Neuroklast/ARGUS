@@ -672,7 +672,20 @@ class ArgusController:
         az_min = dome_limits.get("az_min", 0.0)
         az_max = dome_limits.get("az_max", 360.0)
         if az_min != 0.0 or az_max != 360.0:
-            target_az = max(az_min, min(az_max, target_az))
+            if az_min < az_max:
+                # Normal range (e.g. 30° – 270°)
+                target_az = max(az_min, min(az_max, target_az))
+            else:
+                # Wrap-around range (e.g. 350° – 10°, through north)
+                if not (target_az >= az_min or target_az <= az_max):
+                    # Outside allowed range; snap to nearest limit
+                    dist_min = min(abs(target_az - az_min),
+                                   abs(target_az - az_min - 360),
+                                   abs(target_az - az_min + 360))
+                    dist_max = min(abs(target_az - az_max),
+                                   abs(target_az - az_max - 360),
+                                   abs(target_az - az_max + 360))
+                    target_az = az_min if dist_min <= dist_max else az_max
             logger.debug("Azimuth clamped to [%.1f, %.1f]: %.1f°",
                          az_min, az_max, target_az)
 

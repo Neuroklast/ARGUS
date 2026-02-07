@@ -294,10 +294,11 @@ class TestSetupWizard:
     def test_wizard_german_translations(self):
         from localization import t, set_language, get_language
         original = get_language()
+        set_language("de")
         try:
-            set_language("de")
-            assert t("wizard.title") != "wizard.title"
-            assert "Einrichtung" in t("wizard.title")
+            result = t("wizard.title")
+            assert result != "wizard.title"
+            assert "Einrichtung" in result
         finally:
             set_language(original)
 

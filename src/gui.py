@@ -397,6 +397,7 @@ class ArgusGUI:
         ], spacing=2))
 
         # --- Radar card (compact) with vertical telescope angle ---
+        # Accent-colored readouts updated via toggle_night_mode() directly
         self.lbl_telescope_alt_radar = ft.Text(
             "ALT ---.-°", size=10, font_family="RobotoMono",
             color=self._theme["accent"],
