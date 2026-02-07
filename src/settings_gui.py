@@ -220,47 +220,50 @@ def show_settings_dialog(
     )
 
     # -- Tab layout -------------------------------------------------------
-    # Flet 0.80+ API: content is a flat [Tab, Body, Tab, Body, …] list
-    # and ``length`` specifies the number of tab pairs.
+    # Flet 0.80 Tabs API: Tabs wraps a TabBar + TabBarView.
+    _tab_defs = [
+        ("Hardware", ft.Column([
+            tf_serial_port, tf_baud_rate,
+            dd_motor_type, dd_protocol,
+            tf_steps_per_degree, tf_ticks_per_degree,
+            tf_degrees_per_second, tf_encoder_tolerance,
+            sw_homing_enabled, tf_homing_azimuth, dd_homing_direction,
+        ], spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)),
+        ("Vision", ft.Column([
+            dd_camera_index, tf_marker_size,
+            tf_res_width, tf_res_height, dd_aruco_dict,
+        ], spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)),
+        ("ASCOM", ft.Column([
+            tf_prog_id,
+        ], spacing=8, expand=True)),
+        ("Location", ft.Column([
+            tf_latitude, tf_longitude, tf_elevation,
+        ], spacing=8, expand=True)),
+        ("Geometry", ft.Column([
+            tf_dome_radius, tf_slit_width,
+            tf_pier_height, tf_gem_offset_east, tf_gem_offset_north,
+        ], spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)),
+        ("Control", ft.Column([
+            sw_drift, tf_correction_threshold, tf_max_speed, tf_update_rate,
+        ], spacing=8, expand=True)),
+        ("Safety", ft.Column([
+            sw_protrudes, tf_safe_altitude, tf_max_nudge,
+        ], spacing=8, expand=True)),
+    ]
+
     tabs = ft.Tabs(
+        content=ft.Column([
+            ft.TabBar(
+                tabs=[ft.Tab(label=name) for name, _ in _tab_defs],
+                scrollable=True,
+            ),
+            ft.TabBarView(
+                controls=[body for _, body in _tab_defs],
+                expand=True,
+            ),
+        ]),
+        length=len(_tab_defs),
         selected_index=0,
-        content=[
-            ft.Tab(label="Hardware"),
-            ft.Column([
-                tf_serial_port, tf_baud_rate,
-                dd_motor_type, dd_protocol,
-                tf_steps_per_degree, tf_ticks_per_degree,
-                tf_degrees_per_second, tf_encoder_tolerance,
-                sw_homing_enabled, tf_homing_azimuth, dd_homing_direction,
-            ], spacing=8, scroll=ft.ScrollMode.AUTO),
-            ft.Tab(label="Vision"),
-            ft.Column([
-                dd_camera_index, tf_marker_size,
-                tf_res_width, tf_res_height, dd_aruco_dict,
-            ], spacing=8, scroll=ft.ScrollMode.AUTO),
-            ft.Tab(label="ASCOM"),
-            ft.Column([
-                tf_prog_id,
-            ], spacing=8),
-            ft.Tab(label="Location"),
-            ft.Column([
-                tf_latitude, tf_longitude, tf_elevation,
-            ], spacing=8),
-            ft.Tab(label="Geometry"),
-            ft.Column([
-                tf_dome_radius, tf_slit_width,
-                tf_pier_height, tf_gem_offset_east, tf_gem_offset_north,
-            ], spacing=8, scroll=ft.ScrollMode.AUTO),
-            ft.Tab(label="Control"),
-            ft.Column([
-                sw_drift, tf_correction_threshold, tf_max_speed, tf_update_rate,
-            ], spacing=8),
-            ft.Tab(label="Safety"),
-            ft.Column([
-                sw_protrudes, tf_safe_altitude, tf_max_nudge,
-            ], spacing=8),
-        ],
-        length=7,
         expand=True,
     )
 

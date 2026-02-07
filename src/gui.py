@@ -9,10 +9,13 @@ Professional dark-mode Sci-Fi / SpaceX interface built with Flet for
 observatory dome control and monitoring.
 """
 
+import base64
 import datetime
 import logging
 import math
 
+import numpy as np
+import cv2
 import flet as ft
 import flet.canvas as cv
 
@@ -31,25 +34,72 @@ FONT_INDICATOR = ("Roboto", 11)
 FONT_LOG = ("Roboto Mono", 10)
 
 # ---------------------------------------------------------------------------
-# Colour Constants
+# Theme definitions
 # ---------------------------------------------------------------------------
-COLOR_BG = "#0B0B0B"            # Page background
-COLOR_ERROR = "#FF8C00"          # Orange for error readout
-COLOR_STOP_BTN = "#C0392B"      # Red for STOP button
+# NASA Mission Control dark theme (professional blue-grey, cyan accents)
+THEME_DARK = {
+    "bg": "#0B0E11",
+    "card_bg": "#141A22",
+    "accent": "#00B4D8",
+    "error_readout": "#FF8C00",
+    "stop_btn": "#C0392B",
+    "off": "#3A4450",
+    "on": "#2ECC71",
+    "moving": "#F1C40F",
+    "no_signal": "#667788",
+    "text": "#B0BEC5",
+    "heading": "#E0E6EC",
+    "border": "#2A3442",
+    "radar_circle": "#3A4450",
+    "radar_mount": "#FF3333",
+    "radar_dome": "#00B4D8",
+    "banner_warn_bg": "#F1C40F",
+    "banner_warn_fg": "#000000",
+    "banner_crit_bg": "#C0392B",
+    "banner_crit_fg": "#FFFFFF",
+}
+
+# NASA Night-Vision red/black theme (preserves dark-adapted vision)
+THEME_NIGHT = {
+    "bg": "#0A0000",
+    "card_bg": "#1A0505",
+    "accent": "#CC2200",
+    "error_readout": "#FF4400",
+    "stop_btn": "#880000",
+    "off": "#442222",
+    "on": "#CC3300",
+    "moving": "#CC4400",
+    "no_signal": "#663333",
+    "text": "#CC6655",
+    "heading": "#FF5533",
+    "border": "#442222",
+    "radar_circle": "#662222",
+    "radar_mount": "#FF2200",
+    "radar_dome": "#CC4400",
+    "banner_warn_bg": "#552200",
+    "banner_warn_fg": "#FF6644",
+    "banner_crit_bg": "#660000",
+    "banner_crit_fg": "#FF4422",
+}
+
+# Active colour constants (start with dark theme, toggled at runtime)
+COLOR_BG = THEME_DARK["bg"]
+COLOR_ERROR = THEME_DARK["error_readout"]
+COLOR_STOP_BTN = THEME_DARK["stop_btn"]
 COLOR_STOP_HOVER = "#E74C3C"
-COLOR_OFF = "#555555"            # Grey – indicator off
-COLOR_ON = "#2ECC71"            # Green – indicator on
-COLOR_MOVING = "#F1C40F"        # Yellow – motor moving
-COLOR_NO_SIGNAL = "#888888"      # Grey text for "NO SIGNAL"
-COLOR_CARD_BG = "#161616"       # Card background (Material Design 3)
-COLOR_ACCENT = ft.Colors.CYAN   # Accent colour
-CARD_CORNER_RADIUS = 16         # Rounded corners for card containers
+COLOR_OFF = THEME_DARK["off"]
+COLOR_ON = THEME_DARK["on"]
+COLOR_MOVING = THEME_DARK["moving"]
+COLOR_NO_SIGNAL = THEME_DARK["no_signal"]
+COLOR_CARD_BG = THEME_DARK["card_bg"]
+COLOR_ACCENT = THEME_DARK["accent"]
+CARD_CORNER_RADIUS = 12
 
 # Radar constants
-_RADAR_SIZE = 180
+_RADAR_SIZE = 140
 _RADAR_CX = _RADAR_SIZE / 2
 _RADAR_CY = _RADAR_SIZE / 2
-_RADAR_R = 70
+_RADAR_R = 55
 
 
 def _card(content: ft.Control, **kwargs) -> ft.Container:
@@ -58,9 +108,25 @@ def _card(content: ft.Control, **kwargs) -> ft.Container:
         content=content,
         bgcolor=COLOR_CARD_BG,
         border_radius=CARD_CORNER_RADIUS,
-        padding=12,
+        padding=10,
         **kwargs,
     )
+
+
+def _generate_placeholder_frame(width: int = 640, height: int = 480) -> str:
+    """Generate a dark placeholder image with crosshair and text, return as base64 PNG."""
+    img = np.zeros((height, width, 3), dtype=np.uint8)
+    img[:] = (10, 10, 10)
+    cx, cy = width // 2, height // 2
+    cv2.line(img, (cx - 40, cy), (cx + 40, cy), (60, 60, 60), 1)
+    cv2.line(img, (cx, cy - 40), (cx, cy + 40), (60, 60, 60), 1)
+    cv2.circle(img, (cx, cy), 30, (60, 60, 60), 1)
+    cv2.putText(img, "NO CAMERA SIGNAL", (cx - 130, cy - 50),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (80, 80, 80), 1)
+    cv2.putText(img, "Connect USB camera or configure index in Settings",
+                (cx - 250, cy + 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (50, 50, 50), 1)
+    _, buf = cv2.imencode(".png", img)
+    return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
 class ArgusGUI:
@@ -72,27 +138,29 @@ class ArgusGUI:
 
     def __init__(self, page: ft.Page):
         self.page = page
+        self._theme = dict(THEME_DARK)
+        self._night_mode = False
 
         # -- Text elements for thread-safe updates -----------------------
         self.lbl_mount_az = ft.Text(
-            "---.-°", size=40, font_family="RobotoMono",
-            color=COLOR_ACCENT, weight=ft.FontWeight.BOLD,
+            "---.-°", size=32, font_family="RobotoMono",
+            color=self._theme["accent"], weight=ft.FontWeight.BOLD,
         )
         self.lbl_dome_az = ft.Text(
-            "---.-°", size=40, font_family="RobotoMono",
-            color=COLOR_ACCENT, weight=ft.FontWeight.BOLD,
+            "---.-°", size=32, font_family="RobotoMono",
+            color=self._theme["accent"], weight=ft.FontWeight.BOLD,
         )
         self.lbl_error = ft.Text(
-            "---.-°", size=40, font_family="RobotoMono",
-            color=COLOR_ERROR, weight=ft.FontWeight.BOLD,
+            "---.-°", size=32, font_family="RobotoMono",
+            color=self._theme["error_readout"], weight=ft.FontWeight.BOLD,
         )
 
         # Status indicator badges
-        self.ind_ascom = ft.Container(width=40, height=18, bgcolor=COLOR_OFF,
+        self.ind_ascom = ft.Container(width=36, height=16, bgcolor=COLOR_OFF,
                                        border_radius=6)
-        self.ind_vision = ft.Container(width=40, height=18, bgcolor=COLOR_OFF,
+        self.ind_vision = ft.Container(width=36, height=16, bgcolor=COLOR_OFF,
                                         border_radius=6)
-        self.ind_motor = ft.Container(width=40, height=18, bgcolor=COLOR_OFF,
+        self.ind_motor = ft.Container(width=36, height=16, bgcolor=COLOR_OFF,
                                        border_radius=6)
 
         # Status hint labels (user-facing text next to each indicator)
@@ -120,6 +188,14 @@ class ArgusGUI:
             visible=True,
         )
 
+        # Camera preview image
+        self._placeholder_b64 = _generate_placeholder_frame()
+        self.camera_image = ft.Image(
+            src=f"data:image/png;base64,{self._placeholder_b64}",
+            fit=ft.BoxFit.CONTAIN,
+            expand=True,
+        )
+
         # Radar canvas
         self.radar_canvas = cv.Canvas(
             width=_RADAR_SIZE, height=_RADAR_SIZE,
@@ -128,21 +204,21 @@ class ArgusGUI:
 
         # Log list
         self.log_list = ft.ListView(
-            height=90, spacing=2, auto_scroll=True,
+            height=80, spacing=2, auto_scroll=True,
         )
 
         # Control buttons (callbacks set later by the controller)
         self.btn_ccw = ft.IconButton(
-            icon=ft.Icons.ARROW_BACK, tooltip="CCW",
-            icon_size=32,
+            icon=ft.Icons.ARROW_BACK, tooltip="Rotate CCW (Counter-Clockwise)",
+            icon_size=28,
         )
         self.btn_stop = ft.IconButton(
-            icon=ft.Icons.STOP_CIRCLE, tooltip="STOP",
-            icon_color="red", icon_size=40,
+            icon=ft.Icons.STOP_CIRCLE, tooltip="EMERGENCY STOP",
+            icon_color="red", icon_size=36,
         )
         self.btn_cw = ft.IconButton(
-            icon=ft.Icons.ARROW_FORWARD, tooltip="CW",
-            icon_size=32,
+            icon=ft.Icons.ARROW_FORWARD, tooltip="Rotate CW (Clockwise)",
+            icon_size=28,
         )
 
         # Mode selector
@@ -158,14 +234,22 @@ class ArgusGUI:
 
         # Settings button
         self.btn_settings = ft.IconButton(
-            icon=ft.Icons.SETTINGS, tooltip="Settings",
-            icon_size=28,
+            icon=ft.Icons.SETTINGS, tooltip="Open Settings",
+            icon_size=24,
         )
 
         # Diagnostics button
         self.btn_diagnostics = ft.IconButton(
-            icon=ft.Icons.HEALTH_AND_SAFETY, tooltip="Run Diagnostics",
-            icon_size=28,
+            icon=ft.Icons.HEALTH_AND_SAFETY, tooltip="Run System Diagnostics",
+            icon_size=24,
+        )
+
+        # Night mode toggle button
+        self.btn_night_mode = ft.IconButton(
+            icon=ft.Icons.NIGHTLIGHT_ROUND,
+            tooltip="Toggle Night Mode (red / preserve night vision)",
+            icon_size=24,
+            on_click=lambda e: self.toggle_night_mode(),
         )
 
         # -- Build layout ------------------------------------------------
@@ -177,15 +261,10 @@ class ArgusGUI:
     def _build_layout(self):
         """Assemble the full dashboard layout on the page."""
 
-        # --- Video feed placeholder ---
-        video_card = _card(
+        # --- Video feed with live camera preview ---
+        self.video_card = _card(
             ft.Container(
-                content=ft.Text(
-                    "NO SIGNAL", size=24,
-                    font_family="RobotoMono",
-                    color=COLOR_NO_SIGNAL,
-                    text_align=ft.TextAlign.CENTER,
-                ),
+                content=self.camera_image,
                 alignment=ft.Alignment(0, 0),
                 expand=True,
                 border=ft.Border.all(1, "#333333"),
@@ -193,83 +272,94 @@ class ArgusGUI:
             expand=True,
         )
 
-        # --- Telemetry card ---
+        # --- Telemetry card (compact) ---
         telemetry_card = _card(ft.Column([
-            ft.Text("TELEMETRY", weight=ft.FontWeight.BOLD, size=13),
-            ft.Row([ft.Text("MOUNT AZ", size=12), self.lbl_mount_az],
+            ft.Text("TELEMETRY", weight=ft.FontWeight.BOLD, size=11,
+                     color=self._theme["heading"]),
+            ft.Row([ft.Text("MOUNT AZ", size=11), self.lbl_mount_az],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Row([ft.Text("DOME AZ", size=12), self.lbl_dome_az],
+            ft.Row([ft.Text("DOME AZ", size=11), self.lbl_dome_az],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Row([ft.Text("ERROR", size=12), self.lbl_error],
+            ft.Row([ft.Text("ERROR", size=11), self.lbl_error],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-        ], spacing=4))
+        ], spacing=2))
 
-        # --- Radar card ---
+        # --- Radar card (compact) ---
         radar_card = _card(ft.Column([
-            ft.Text("RADAR", weight=ft.FontWeight.BOLD, size=13),
+            ft.Text("DOME POSITION", weight=ft.FontWeight.BOLD, size=11,
+                     color=self._theme["heading"]),
             ft.Container(
                 content=self.radar_canvas,
                 alignment=ft.Alignment(0, 0),
             ),
-        ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
+        ], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
 
         # --- Status card ---
         def _indicator_col(label: str, badge: ft.Container,
                            hint: ft.Text) -> ft.Column:
             return ft.Column([
-                ft.Text(label, size=11, text_align=ft.TextAlign.CENTER),
+                ft.Text(label, size=10, text_align=ft.TextAlign.CENTER),
                 badge,
                 hint,
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2)
 
         status_card = _card(ft.Column([
-            ft.Text("STATUS", weight=ft.FontWeight.BOLD, size=13),
+            ft.Text("CONNECTION STATUS", weight=ft.FontWeight.BOLD, size=11,
+                     color=self._theme["heading"]),
             ft.Row([
-                _indicator_col("ASCOM", self.ind_ascom, self.hint_ascom),
-                _indicator_col("VISION", self.ind_vision, self.hint_vision),
+                _indicator_col("TELESCOPE", self.ind_ascom, self.hint_ascom),
+                _indicator_col("CAMERA", self.ind_vision, self.hint_vision),
                 _indicator_col("MOTOR", self.ind_motor, self.hint_motor),
             ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
-        ], spacing=4))
+        ], spacing=2))
 
         # --- Controls card ---
         controls_card = _card(ft.Column([
-            ft.Text("MANUAL CONTROL", weight=ft.FontWeight.BOLD, size=13),
+            ft.Text("DOME CONTROL", weight=ft.FontWeight.BOLD, size=11,
+                     color=self._theme["heading"]),
             ft.Row([
                 self.btn_ccw, self.btn_stop, self.btn_cw,
             ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
-        ], spacing=4))
+        ], spacing=2))
 
         # --- Mode card ---
         mode_card = _card(ft.Column([
-            ft.Text("MODE", weight=ft.FontWeight.BOLD, size=13),
+            ft.Text("OPERATING MODE", weight=ft.FontWeight.BOLD, size=11,
+                     color=self._theme["heading"]),
             self.mode_selector,
-        ], spacing=4))
+        ], spacing=2))
 
-        # --- Settings card ---
-        settings_card = _card(ft.Row([
-            ft.Text("SETTINGS", weight=ft.FontWeight.BOLD, size=13),
-            ft.Row([self.btn_diagnostics, self.btn_settings], spacing=0),
+        # --- Toolbar card (settings, diagnostics, night mode) ---
+        toolbar_card = _card(ft.Row([
+            ft.Text("TOOLS", weight=ft.FontWeight.BOLD, size=11,
+                     color=self._theme["heading"]),
+            ft.Row([
+                self.btn_night_mode,
+                self.btn_diagnostics,
+                self.btn_settings,
+            ], spacing=0),
         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
 
-        # --- Log card (fixed height so it never pushes the dashboard off-screen) ---
+        # --- Log card (fixed height) ---
         log_card = _card(ft.Column([
-            ft.Text("SYSTEM LOG", weight=ft.FontWeight.BOLD, size=13),
+            ft.Text("SYSTEM LOG", weight=ft.FontWeight.BOLD, size=11,
+                     color=self._theme["heading"]),
             self.log_list,
-        ], spacing=4))
+        ], spacing=2))
 
-        # --- Dashboard (right column) ---
-        dashboard = ft.Column([
-            telemetry_card,
-            radar_card,
-            status_card,
-            controls_card,
-            mode_card,
-            settings_card,
-        ], scroll=ft.ScrollMode.AUTO, expand=True, spacing=8)
+        # --- Dashboard (right column) – NO scroll, all elements visible ---
+        self._dashboard_cards = [
+            telemetry_card, radar_card, status_card,
+            controls_card, mode_card, toolbar_card,
+        ]
+        dashboard = ft.Column(
+            self._dashboard_cards,
+            expand=True, spacing=6,
+        )
 
         # --- Main layout ---
         main_row = ft.Row([
-            ft.Container(content=video_card, expand=2),
+            ft.Container(content=self.video_card, expand=2),
             ft.Container(content=dashboard, expand=1),
         ], expand=True, spacing=8)
 
@@ -278,7 +368,7 @@ class ArgusGUI:
                 self.connection_banner,
                 ft.Container(content=main_row, expand=True),
                 log_card,
-            ], expand=True, spacing=8),
+            ], expand=True, spacing=6),
         )
 
     # ===================================================================
@@ -330,6 +420,95 @@ class ArgusGUI:
             dome_az:  Current dome slit azimuth in degrees.
         """
         self.radar_canvas.shapes = self._radar_shapes(mount_az, dome_az)
+
+    # ===================================================================
+    # Camera preview
+    # ===================================================================
+    def update_camera_preview(self, frame, marker_data=None,
+                              drift=None) -> None:
+        """Update the camera preview image with optional detection overlay.
+
+        Args:
+            frame: numpy array (BGR) from camera, or ``None`` for placeholder.
+            marker_data: Marker detection dict from VisionSystem, or ``None``.
+            drift: Tuple (dx, dy) drift in pixels, or ``None``.
+        """
+        if frame is None:
+            self.camera_image.src = f"data:image/png;base64,{self._placeholder_b64}"
+            try:
+                self.page.update()
+            except Exception:
+                pass
+            return
+
+        overlay = frame.copy()
+        h, w = overlay.shape[:2]
+        cx, cy = w // 2, h // 2
+
+        # Draw crosshair at centre
+        cv2.line(overlay, (cx - 30, cy), (cx + 30, cy), (0, 180, 180), 1)
+        cv2.line(overlay, (cx, cy - 30), (cx, cy + 30), (0, 180, 180), 1)
+
+        if marker_data and marker_data.get("markers"):
+            for m in marker_data["markers"]:
+                corners = m["corners"].astype(int)
+                cv2.polylines(overlay, [corners], True, (0, 255, 0), 2)
+                mc = tuple(map(int, m["center"]))
+                cv2.putText(overlay, f"ID:{m['id']}", (mc[0] + 10, mc[1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                cv2.circle(overlay, mc, 4, (0, 255, 0), -1)
+
+            if drift is not None:
+                dx, dy = drift
+                cv2.putText(overlay, f"DRIFT dx={dx:+.1f} dy={dy:+.1f}",
+                            (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                            (0, 200, 200), 1)
+                # Arrow from centre to drift direction
+                end_x = int(cx + dx * 0.5)
+                end_y = int(cy + dy * 0.5)
+                cv2.arrowedLine(overlay, (cx, cy), (end_x, end_y),
+                                (0, 200, 200), 2)
+
+            cv2.putText(overlay, "TRACKING", (10, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
+        else:
+            cv2.putText(overlay, "NO MARKERS DETECTED", (10, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 100, 200), 1)
+
+        # Encode to base64 PNG
+        _, buf = cv2.imencode(".jpg", overlay, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+        self.camera_image.src = f"data:image/jpeg;base64,{b64}"
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    # ===================================================================
+    # Night mode / theme toggle
+    # ===================================================================
+    def toggle_night_mode(self) -> None:
+        """Switch between NASA light theme and red/black night mode."""
+        self._night_mode = not self._night_mode
+        self._theme = dict(THEME_NIGHT) if self._night_mode else dict(THEME_DARK)
+
+        # Update page background
+        self.page.bgcolor = self._theme["bg"]
+
+        # Update accent colours on telemetry labels
+        self.lbl_mount_az.color = self._theme["accent"]
+        self.lbl_dome_az.color = self._theme["accent"]
+        self.lbl_error.color = self._theme["error_readout"]
+
+        # Toggle icon
+        self.btn_night_mode.icon = (
+            ft.Icons.LIGHT_MODE if self._night_mode else ft.Icons.NIGHTLIGHT_ROUND
+        )
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     # ===================================================================
     # Public API
@@ -476,13 +655,45 @@ class ArgusGUI:
             pass
 
     # ===================================================================
-    # Diagnostics dialog
+    # Diagnostics dialog (with loading state)
     # ===================================================================
-    def show_diagnostics(self, report) -> None:
-        """Open a dialog showing the results of a diagnostics report.
+    def show_diagnostics_loading(self) -> ft.AlertDialog:
+        """Show a diagnostics dialog with a loading indicator immediately.
+
+        Returns the dialog so the caller can replace its content later.
+        """
+        dlg = ft.AlertDialog(
+            title=ft.Text("System Diagnostics"),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.ProgressRing(width=40, height=40, stroke_width=3),
+                    ft.Text("Running diagnostics …", size=13,
+                            text_align=ft.TextAlign.CENTER),
+                ], alignment=ft.MainAxisAlignment.CENTER,
+                   horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                   spacing=12),
+                width=560,
+                height=420,
+                alignment=ft.Alignment(0, 0),
+            ),
+            actions=[
+                ft.TextButton("Close", on_click=lambda e: self._close_dialog(dlg)),
+            ],
+        )
+        self.page.overlay.append(dlg)
+        dlg.open = True
+        try:
+            self.page.update()
+        except Exception:
+            pass
+        return dlg
+
+    def show_diagnostics(self, report, dlg=None) -> None:
+        """Open (or update) a dialog showing the diagnostics report.
 
         Args:
             report: A :class:`diagnostics.DiagReport` instance.
+            dlg:    Optional pre-existing loading dialog to update.
         """
         from diagnostics import Status
 
@@ -524,23 +735,31 @@ class ArgusGUI:
             size=13, weight=ft.FontWeight.BOLD,
         )
 
-        dlg = ft.AlertDialog(
-            title=ft.Text("System Diagnostics"),
-            content=ft.Container(
-                content=ft.Column(
-                    [header] + rows,
-                    scroll=ft.ScrollMode.AUTO,
-                    spacing=4,
-                ),
-                width=560,
-                height=420,
+        result_content = ft.Container(
+            content=ft.Column(
+                [header] + rows,
+                scroll=ft.ScrollMode.AUTO,
+                spacing=4,
             ),
-            actions=[
-                ft.TextButton("Close", on_click=lambda e: self._close_dialog(dlg)),
-            ],
+            width=560,
+            height=420,
         )
-        self.page.overlay.append(dlg)
-        dlg.open = True
+
+        if dlg is not None:
+            # Update the existing loading dialog with results
+            dlg.content = result_content
+        else:
+            dlg = ft.AlertDialog(
+                title=ft.Text("System Diagnostics"),
+                content=result_content,
+                actions=[
+                    ft.TextButton("Close",
+                                  on_click=lambda e: self._close_dialog(dlg)),
+                ],
+            )
+            self.page.overlay.append(dlg)
+            dlg.open = True
+
         try:
             self.page.update()
         except Exception:
@@ -553,6 +772,8 @@ class ArgusGUI:
             self.page.update()
         except Exception:
             pass
+
+
 # -----------------------------------------------------------------------
 def _standalone_main(page: ft.Page):
     """Standalone entry point for previewing the GUI without the controller."""

@@ -713,6 +713,50 @@ class ArgusController:
         except Exception:
             pass
 
+    # ---- Camera preview for the GUI ------------------------------------
+    _PREVIEW_INTERVAL = 0.2  # max ~5 fps for camera preview
+
+    def __init_preview_state(self):
+        """Lazily initialise preview timing state."""
+        if not hasattr(self, "_last_preview_time"):
+            self._last_preview_time = 0.0
+
+    def _update_camera_preview(self) -> None:
+        """Capture a frame with overlay and push it to the GUI preview."""
+        self.__init_preview_state()
+        import time as _time
+        now = _time.time()
+        if now - self._last_preview_time < self._PREVIEW_INTERVAL:
+            return
+        self._last_preview_time = now
+
+        if self.gui is None:
+            return
+
+        if self.vision is None or not self.vision.camera_open:
+            # Show placeholder when no camera
+            self.gui.update_camera_preview(None)
+            return
+
+        frame = self.vision.capture_frame()
+        if frame is None:
+            self.gui.update_camera_preview(None)
+            return
+
+        # Detect markers for overlay
+        marker_data = self.vision.detect_markers(frame)
+        drift = None
+        if marker_data:
+            shape = marker_data.get("frame_shape")
+            if shape:
+                expected = (shape[1] / 2, shape[0] / 2)
+            else:
+                res = self.vision.resolution
+                expected = (res[0] / 2, res[1] / 2)
+            drift = self.vision.calculate_drift(marker_data, expected)
+
+        self.gui.update_camera_preview(frame, marker_data, drift)
+
     # ---- Health checks --------------------------------------------------
     def check_system_health(self) -> str:
         """Evaluate system health and return HEALTHY / DEGRADED / CRITICAL.
@@ -1029,11 +1073,13 @@ class ArgusController:
                         self.voice.say("Visual contact lost")
             self._last_vision_ok = vision_ok
 
-            # Push telemetry to GUI
+            # Push telemetry and camera preview to GUI
             if self.gui is not None:
                 try:
                     self.gui.update_telemetry(mount_az, dome_az)
                     self._update_indicators()
+                    # Update camera preview with detection overlay
+                    self._update_camera_preview()
                 except Exception:
                     pass
 
@@ -1255,15 +1301,27 @@ class ArgusController:
 
     # ---- Diagnostics callback ---------------------------------------------
     def _run_diagnostics(self) -> None:
-        """Run system diagnostics and show results in the GUI."""
-        try:
-            from diagnostics import SystemDiagnostics
-            diag = SystemDiagnostics(self.config, controller=self)
-            report = diag.run_all()
-            if self.gui:
-                self.gui.show_diagnostics(report)
-        except Exception as exc:
-            logger.error("Diagnostics failed: %s", exc)
+        """Run system diagnostics and show results in the GUI.
+
+        Shows a loading dialog immediately, then runs diagnostics in a
+        background thread to keep the UI responsive.
+        """
+        if self.gui is None:
+            return
+
+        # Show loading dialog immediately
+        dlg = self.gui.show_diagnostics_loading()
+
+        def _bg_diagnostics():
+            try:
+                from diagnostics import SystemDiagnostics
+                diag = SystemDiagnostics(self.config, controller=self)
+                report = diag.run_all()
+                self.gui.show_diagnostics(report, dlg=dlg)
+            except Exception as exc:
+                logger.error("Diagnostics failed: %s", exc)
+
+        threading.Thread(target=_bg_diagnostics, daemon=True).start()
 
 
 def main(page: ft.Page):
@@ -1274,18 +1332,29 @@ def main(page: ft.Page):
     page.window.width = 1280
     page.window.height = 720
 
-    # -- Show a loading screen while hardware initialises ------------------
-    loading_ring = ft.ProgressRing(width=48, height=48, stroke_width=4)
+    # -- Splash screen with progress bar ----------------------------------
+    splash_title = ft.Text(
+        "ARGUS", size=36, weight=ft.FontWeight.BOLD,
+        color="#CCCCCC", text_align=ft.TextAlign.CENTER,
+        font_family="RobotoMono",
+    )
+    splash_subtitle = ft.Text(
+        "Advanced Rotation Guidance Using Sensors",
+        size=13, color="#666666", text_align=ft.TextAlign.CENTER,
+    )
+    loading_bar = ft.ProgressBar(width=320, value=0, color=ft.Colors.CYAN)
     loading_text = ft.Text(
-        "Initialising hardware …",
-        size=14, color="#888888", text_align=ft.TextAlign.CENTER,
+        "Starting up …",
+        size=12, color="#888888", text_align=ft.TextAlign.CENTER,
     )
     loading_overlay = ft.Container(
         content=ft.Column(
-            [loading_ring, loading_text],
+            [splash_title, splash_subtitle,
+             ft.Container(height=24),
+             loading_bar, loading_text],
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=16,
+            spacing=8,
         ),
         alignment=ft.Alignment(0, 0),
         expand=True,
@@ -1294,45 +1363,61 @@ def main(page: ft.Page):
     page.add(loading_overlay)
     page.update()
 
-    # -- Build GUI (hidden until init finishes) ----------------------------
-    gui = ArgusGUI(page)
-
-    # Pin the GUI reference immediately so the session cannot be GC-ed
-    # while the background thread is still running.
-    page._argus_gui = gui
+    def _update_splash(progress: float, text: str):
+        """Update splash screen progress (0.0–1.0) and status text."""
+        loading_bar.value = progress
+        loading_text.value = text
+        try:
+            page.update()
+        except Exception:
+            pass
 
     def _deferred_init():
         """Run heavy hardware initialisation in a background thread."""
         try:
-            controller = ArgusController(config=load_config(), gui=gui)
+            _update_splash(0.1, "Loading configuration …")
+            config = load_config()
+
+            _update_splash(0.2, "Building user interface …")
+            gui = ArgusGUI(page)
+            page._argus_gui = gui
+
+            _update_splash(0.4, "Connecting hardware …")
+            controller = ArgusController(config=config, gui=gui)
+
+            _update_splash(0.8, "Starting Alpaca server …")
+            # Start ASCOM Alpaca server (if available)
+            alpaca = None
+            if AlpacaDomeServer is not None:
+                try:
+                    alpaca = AlpacaDomeServer(controller)
+                    alpaca.start()
+                except Exception as exc:
+                    logger.warning("Failed to start Alpaca server: %s", exc)
+
+            page._argus_controller = controller
+            page._argus_alpaca = alpaca
+
+            _update_splash(1.0, "Ready")
+            import time as _time
+            _time.sleep(0.3)
+
+            # Remove the splash – the real GUI is already on the page.
+            try:
+                page.controls.remove(loading_overlay)
+                page.update()
+            except Exception:
+                pass
+
         except Exception:
             logger.critical("Unhandled exception during init", exc_info=True)
             loading_text.value = "⚠ Initialisation failed – see log"
-            loading_ring.visible = False
+            loading_bar.color = "#C0392B"
+            loading_bar.value = 1.0
             try:
                 page.update()
             except Exception:
                 pass
-            return
-
-        # Start ASCOM Alpaca server (if available)
-        alpaca = None
-        if AlpacaDomeServer is not None:
-            try:
-                alpaca = AlpacaDomeServer(controller)
-                alpaca.start()
-            except Exception as exc:
-                logger.warning("Failed to start Alpaca server: %s", exc)
-
-        page._argus_controller = controller
-        page._argus_alpaca = alpaca
-
-        # Remove the loading overlay – the real GUI is already on the page.
-        try:
-            page.controls.remove(loading_overlay)
-            page.update()
-        except Exception:
-            pass
 
     threading.Thread(target=_deferred_init, name="argus-init", daemon=True).start()
 
