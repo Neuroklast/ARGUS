@@ -11,8 +11,10 @@ Includes degraded-mode logic, outlier rejection, hysteresis, and
 production-grade rotating log files.
 """
 
+import atexit
 import logging
 import logging.handlers
+import signal
 import sys
 import threading
 import time
@@ -360,8 +362,12 @@ class ArgusController:
             gui.btn_settings.on_click = lambda e: show_settings_dialog(
                 gui.page, self.config, self._on_settings_saved,
             )
+            gui.btn_diagnostics.on_click = lambda e: self._run_diagnostics()
 
         self._update_indicators()
+
+        # -- Failsafe: register emergency stop on exit/crash ---------------
+        self._register_failsafes()
 
         # -- Background control loop -------------------------------------
         self._thread = threading.Thread(target=self._control_loop, daemon=True)
@@ -391,6 +397,54 @@ class ArgusController:
             format=fmt,
             handlers=handlers or [logging.StreamHandler()],
         )
+
+    # ---- Failsafe mechanisms -------------------------------------------
+    def _register_failsafes(self):
+        """Register emergency-stop handlers for process exit and signals.
+
+        Ensures motors are stopped immediately when:
+        * The Python process exits (atexit)
+        * An unhandled exception reaches the top level
+        * A termination signal (SIGTERM/SIGINT) is received
+        """
+        atexit.register(self._emergency_stop)
+
+        self._orig_excepthook = sys.excepthook
+        sys.excepthook = self._crash_handler
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                signal.signal(sig, self._signal_handler)
+            except (OSError, ValueError):
+                pass  # Cannot set signal handler from non-main thread
+
+    def _emergency_stop(self):
+        """Unconditionally stop all motors – used as a last-resort failsafe."""
+        self._running = False
+        try:
+            if self.dome_driver is not None:
+                self.dome_driver.abort()
+        except Exception:
+            pass
+        try:
+            if self.serial is not None and self.serial.connected:
+                self.serial.stop_motor()
+        except Exception:
+            pass
+        self.sensor.slew_rate = 0.0
+
+    def _crash_handler(self, exc_type, exc_value, exc_tb):
+        """Global exception hook: stop motors, then call the original hook."""
+        logger.critical("Unhandled exception – EMERGENCY STOP", exc_info=(exc_type, exc_value, exc_tb))
+        self._emergency_stop()
+        if self._orig_excepthook:
+            self._orig_excepthook(exc_type, exc_value, exc_tb)
+
+    def _signal_handler(self, signum, frame):
+        """Handle SIGTERM/SIGINT: stop motors and shut down cleanly."""
+        logger.warning("Signal %s received – EMERGENCY STOP", signum)
+        self._emergency_stop()
+        self.shutdown()
 
     # ---- Hardware initialisation helpers --------------------------------
     def _init_math_utils(self):
@@ -848,7 +902,12 @@ class ArgusController:
 
     # ---- Background control loop ----------------------------------------
     def _control_loop(self):
-        """Thread-safe control loop that drives MANUAL and AUTO-SLAVE."""
+        """Thread-safe control loop that drives MANUAL and AUTO-SLAVE.
+
+        The entire loop body is wrapped in a try/except so that any
+        unexpected error triggers an emergency motor stop rather than
+        letting the dome continue to rotate uncontrolled.
+        """
         ctrl_cfg = self.config.get("control", {})
         update_rate = ctrl_cfg.get("update_rate", 10)
         interval = 1.0 / max(update_rate, 1)
@@ -861,6 +920,7 @@ class ArgusController:
         mount_az = 180.0  # default when ASCOM is unavailable
 
         while self._running:
+          try:
             now = time.time()
             dt = now - last
             last = now
@@ -978,6 +1038,20 @@ class ArgusController:
                     pass
 
             time.sleep(interval)
+          except Exception:
+            # Failsafe: any unexpected error in the loop body must stop
+            # all motors immediately to prevent uncontrolled dome rotation.
+            logger.critical(
+                "Control loop error – EMERGENCY STOP", exc_info=True,
+            )
+            self._emergency_stop()
+            if self.gui is not None:
+                try:
+                    self.gui.write_log(
+                        "⚠ EMERGENCY STOP – control loop error (see log)"
+                    )
+                except Exception:
+                    pass
 
     # ---- Safe dome slewing (collision avoidance) --------------------------
     def safe_slew_dome(self, target_dome_az: float) -> None:
@@ -1178,6 +1252,18 @@ class ArgusController:
         """Handle updated config from the settings dialog."""
         self.config = new_config
         logger.info("Configuration updated from settings dialog")
+
+    # ---- Diagnostics callback ---------------------------------------------
+    def _run_diagnostics(self) -> None:
+        """Run system diagnostics and show results in the GUI."""
+        try:
+            from diagnostics import SystemDiagnostics
+            diag = SystemDiagnostics(self.config, controller=self)
+            report = diag.run_all()
+            if self.gui:
+                self.gui.show_diagnostics(report)
+        except Exception as exc:
+            logger.error("Diagnostics failed: %s", exc)
 
 
 def main(page: ft.Page):

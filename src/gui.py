@@ -475,9 +475,84 @@ class ArgusGUI:
         except Exception:
             pass
 
+    # ===================================================================
+    # Diagnostics dialog
+    # ===================================================================
+    def show_diagnostics(self, report) -> None:
+        """Open a dialog showing the results of a diagnostics report.
 
-# -----------------------------------------------------------------------
-# Direct execution (standalone preview)
+        Args:
+            report: A :class:`diagnostics.DiagReport` instance.
+        """
+        from diagnostics import Status
+
+        _STATUS_ICONS = {
+            Status.OK: ("✓", "#2ECC71"),
+            Status.WARNING: ("⚠", "#F1C40F"),
+            Status.ERROR: ("✗", "#E74C3C"),
+            Status.INFO: ("ℹ", "#3498DB"),
+        }
+
+        rows: list = []
+        for r in report.results:
+            icon_char, icon_color = _STATUS_ICONS.get(
+                r.status, ("?", "#888888")
+            )
+            parts = [
+                ft.Text(icon_char, color=icon_color, size=14,
+                        weight=ft.FontWeight.BOLD),
+                ft.Text(f"[{r.category}] {r.name}", size=12,
+                        weight=ft.FontWeight.BOLD),
+                ft.Text(r.message, size=11, color="#CCCCCC"),
+            ]
+            if r.suggestion:
+                parts.append(ft.Text(
+                    f"→ {r.suggestion}", size=10, italic=True,
+                    color="#F1C40F",
+                ))
+            rows.append(ft.Container(
+                content=ft.Column(parts, spacing=2),
+                padding=6,
+                border=ft.Border(
+                    bottom=ft.BorderSide(1, "#333333"),
+                ),
+            ))
+
+        # Summary header
+        header = ft.Text(
+            f"Diagnostics: {report.summary}  ({report.duration_s}s)",
+            size=13, weight=ft.FontWeight.BOLD,
+        )
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("System Diagnostics"),
+            content=ft.Container(
+                content=ft.Column(
+                    [header] + rows,
+                    scroll=ft.ScrollMode.AUTO,
+                    spacing=4,
+                ),
+                width=560,
+                height=420,
+            ),
+            actions=[
+                ft.TextButton("Close", on_click=lambda e: self._close_dialog(dlg)),
+            ],
+        )
+        self.page.overlay.append(dlg)
+        dlg.open = True
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _close_dialog(self, dlg: ft.AlertDialog) -> None:
+        """Close an open dialog."""
+        dlg.open = False
+        try:
+            self.page.update()
+        except Exception:
+            pass
 # -----------------------------------------------------------------------
 def _standalone_main(page: ft.Page):
     page.title = "ARGUS – Dome Control"

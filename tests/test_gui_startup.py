@@ -22,6 +22,7 @@ from gui import (
     COLOR_OFF,
     COLOR_ON,
     COLOR_MOVING,
+    COLOR_NO_SIGNAL,
     _card,
 )
 
@@ -313,3 +314,268 @@ class TestSessionGcPrevention:
         _standalone_main(page)
         assert hasattr(page, "_argus_gui")
         assert isinstance(page._argus_gui, ArgusGUI)
+
+
+# ---------------------------------------------------------------------------
+# Status hints
+# ---------------------------------------------------------------------------
+class TestStatusHints:
+    """Verify the set_status_hint method and hint label widgets."""
+
+    def test_hint_labels_exist(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.hint_ascom is not None
+        assert gui.hint_vision is not None
+        assert gui.hint_motor is not None
+
+    def test_hint_labels_initial_value(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.hint_ascom.value == "Not connected"
+        assert gui.hint_vision.value == "Not connected"
+        assert gui.hint_motor.value == "Not connected"
+
+    def test_set_status_hint_updates_text(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.set_status_hint("ascom", "Connected")
+        assert gui.hint_ascom.value == "Connected"
+
+    def test_set_status_hint_unknown_component(self):
+        gui = ArgusGUI(_make_mock_page())
+        # Should not raise
+        gui.set_status_hint("unknown", "test")
+
+    def test_set_status_hint_tolerates_page_error(self):
+        page = _make_mock_page()
+        gui = ArgusGUI(page)
+        page.update.side_effect = RuntimeError("gone")
+        gui.set_status_hint("motor", "Reconnecting…")
+        assert gui.hint_motor.value == "Reconnecting…"
+
+
+# ---------------------------------------------------------------------------
+# Connection banner
+# ---------------------------------------------------------------------------
+class TestConnectionBanner:
+    """Verify the connection status banner."""
+
+    def test_banner_exists(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.connection_banner is not None
+
+    def test_banner_visible_initially(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.connection_banner.visible is True
+
+    def test_banner_hidden_when_all_connected(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_connection_banner(True, True, True)
+        assert gui.connection_banner.visible is False
+
+    def test_banner_visible_when_partial(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_connection_banner(True, False, True)
+        assert gui.connection_banner.visible is True
+        text = gui.connection_banner.content.value
+        assert "Camera" in text
+
+    def test_banner_red_when_nothing_connected(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_connection_banner(False, False, False)
+        assert gui.connection_banner.bgcolor == "#C0392B"
+        assert "simulation" in gui.connection_banner.content.value.lower()
+
+    def test_banner_yellow_when_partial(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_connection_banner(True, True, False)
+        assert gui.connection_banner.bgcolor == "#F1C40F"
+
+    def test_banner_lists_missing_components(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_connection_banner(False, True, False)
+        text = gui.connection_banner.content.value
+        assert "Telescope" in text
+        assert "Motor" in text
+        assert "Camera" not in text
+
+    def test_banner_tolerates_page_error(self):
+        page = _make_mock_page()
+        gui = ArgusGUI(page)
+        page.update.side_effect = RuntimeError("gone")
+        gui.update_connection_banner(False, False, False)
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics button
+# ---------------------------------------------------------------------------
+class TestDiagnosticsButton:
+    """Verify the diagnostics button exists in the GUI."""
+
+    def test_diagnostics_button_exists(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.btn_diagnostics is not None
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics module
+# ---------------------------------------------------------------------------
+class TestDiagnostics:
+    """Verify the diagnostics engine produces structured results."""
+
+    def test_run_all_returns_report(self):
+        from diagnostics import SystemDiagnostics, DiagReport
+        from main import DEFAULT_CONFIG
+        diag = SystemDiagnostics(dict(DEFAULT_CONFIG))
+        report = diag.run_all()
+        assert isinstance(report, DiagReport)
+        assert len(report.results) > 0
+
+    def test_report_has_summary(self):
+        from diagnostics import SystemDiagnostics
+        from main import DEFAULT_CONFIG
+        diag = SystemDiagnostics(dict(DEFAULT_CONFIG))
+        report = diag.run_all()
+        assert isinstance(report.summary, str)
+        assert len(report.summary) > 0
+
+    def test_report_has_timestamp(self):
+        from diagnostics import SystemDiagnostics
+        from main import DEFAULT_CONFIG
+        diag = SystemDiagnostics(dict(DEFAULT_CONFIG))
+        report = diag.run_all()
+        assert report.timestamp != ""
+
+    def test_report_duration_positive(self):
+        from diagnostics import SystemDiagnostics
+        from main import DEFAULT_CONFIG
+        diag = SystemDiagnostics(dict(DEFAULT_CONFIG))
+        report = diag.run_all()
+        assert report.duration_s >= 0
+
+    def test_check_python_finds_flet(self):
+        from diagnostics import SystemDiagnostics, Status
+        from main import DEFAULT_CONFIG
+        diag = SystemDiagnostics(dict(DEFAULT_CONFIG))
+        results = diag._check_python()
+        flet_result = [r for r in results if "flet" in r.name.lower()]
+        assert len(flet_result) == 1
+        assert flet_result[0].status == Status.OK
+
+    def test_check_config_validates_location(self):
+        from diagnostics import SystemDiagnostics, Status
+        config = {"math": {"observatory": {"latitude": 0.0, "longitude": 0.0},
+                           "dome": {"radius": 2.5}},
+                  "hardware": {"serial_port": "COM3"},
+                  "control": {"update_rate": 10},
+                  "logging": {}}
+        diag = SystemDiagnostics(config)
+        results = diag._check_config()
+        loc_results = [r for r in results if "Location" in r.name]
+        assert any(r.status == Status.WARNING for r in loc_results)
+
+    def test_check_config_invalid_rate(self):
+        from diagnostics import SystemDiagnostics, Status
+        config = {"math": {"observatory": {"latitude": 51.0, "longitude": -0.1},
+                           "dome": {"radius": 2.5}},
+                  "hardware": {"serial_port": "COM3"},
+                  "control": {"update_rate": 0},
+                  "logging": {}}
+        diag = SystemDiagnostics(config)
+        results = diag._check_config()
+        rate_results = [r for r in results if "Update Rate" in r.name]
+        assert any(r.status == Status.ERROR for r in rate_results)
+
+    def test_diag_result_fields(self):
+        from diagnostics import DiagResult, Status
+        r = DiagResult(
+            category="Test", name="Test Check",
+            status=Status.OK, message="All good",
+            suggestion="",
+        )
+        assert r.category == "Test"
+        assert r.status == Status.OK
+
+    def test_report_error_count(self):
+        from diagnostics import DiagReport, DiagResult, Status
+        report = DiagReport(results=[
+            DiagResult("A", "a", Status.OK, "ok"),
+            DiagResult("B", "b", Status.ERROR, "fail", "fix it"),
+            DiagResult("C", "c", Status.WARNING, "warn"),
+        ])
+        assert len(report.errors) == 1
+        assert len(report.warnings) == 1
+        assert report.ok_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Failsafe: emergency stop
+# ---------------------------------------------------------------------------
+class TestFailsafe:
+    """Verify failsafe mechanisms in the controller."""
+
+    def test_emergency_stop_stops_sensor(self):
+        from main import ArgusController
+        ctrl = ArgusController.__new__(ArgusController)
+        ctrl._running = True
+        ctrl.dome_driver = None
+        ctrl.serial = None
+        from simulation_sensor import SimulationSensor
+        ctrl.sensor = SimulationSensor()
+        ctrl.sensor.slew_rate = 5.0
+        ctrl._emergency_stop()
+        assert ctrl.sensor.slew_rate == 0.0
+        assert ctrl._running is False
+
+    def test_emergency_stop_calls_serial_stop(self):
+        from main import ArgusController
+        ctrl = ArgusController.__new__(ArgusController)
+        ctrl._running = True
+        ctrl.dome_driver = None
+        ctrl.serial = MagicMock()
+        ctrl.serial.connected = True
+        from simulation_sensor import SimulationSensor
+        ctrl.sensor = SimulationSensor()
+        ctrl._emergency_stop()
+        ctrl.serial.stop_motor.assert_called_once()
+
+    def test_emergency_stop_calls_dome_abort(self):
+        from main import ArgusController
+        ctrl = ArgusController.__new__(ArgusController)
+        ctrl._running = True
+        ctrl.dome_driver = MagicMock()
+        ctrl.serial = None
+        from simulation_sensor import SimulationSensor
+        ctrl.sensor = SimulationSensor()
+        ctrl._emergency_stop()
+        ctrl.dome_driver.abort.assert_called_once()
+
+    def test_emergency_stop_tolerates_serial_error(self):
+        from main import ArgusController
+        ctrl = ArgusController.__new__(ArgusController)
+        ctrl._running = True
+        ctrl.dome_driver = None
+        ctrl.serial = MagicMock()
+        ctrl.serial.connected = True
+        ctrl.serial.stop_motor.side_effect = RuntimeError("dead")
+        from simulation_sensor import SimulationSensor
+        ctrl.sensor = SimulationSensor()
+        # Should not raise
+        ctrl._emergency_stop()
+        assert ctrl._running is False
+
+    def test_crash_handler_calls_emergency_stop(self):
+        from main import ArgusController
+        ctrl = ArgusController.__new__(ArgusController)
+        ctrl._running = True
+        ctrl.dome_driver = None
+        ctrl.serial = None
+        from simulation_sensor import SimulationSensor
+        ctrl.sensor = SimulationSensor()
+        ctrl.sensor.slew_rate = 10.0
+        ctrl._orig_excepthook = MagicMock()
+        try:
+            raise ValueError("test crash")
+        except ValueError:
+            exc_info = sys.exc_info()
+        ctrl._crash_handler(*exc_info)
+        assert ctrl.sensor.slew_rate == 0.0
+        assert ctrl._running is False
