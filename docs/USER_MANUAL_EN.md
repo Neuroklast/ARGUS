@@ -16,8 +16,11 @@ Version 0.1.0
 6. [User Interface](#6-user-interface)
 7. [Operating Modes](#7-operating-modes)
 8. [Calibration](#8-calibration)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Safety Notes](#10-safety-notes)
+9. [Dome Drivers & Protocols](#9-dome-drivers--protocols)
+10. [ASCOM Alpaca Server](#10-ascom-alpaca-server)
+11. [Replay / Demo Mode](#11-replay--demo-mode)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Safety Notes](#13-safety-notes)
 
 ---
 
@@ -172,7 +175,24 @@ safety:
 - **max_nudge_while_protruding**: Maximum dome correction in degrees that is
   allowed while the telescope is inside the slit.
 
-### 4.6 Settings GUI
+### 4.6 Control Loop Settings
+
+```yaml
+control:
+  update_rate: 10
+  drift_correction_enabled: true
+  correction_threshold: 0.5
+  max_speed: 100
+```
+
+- **update_rate**: How many times per second the control loop runs (Hz).
+- **drift_correction_enabled**: Set to `false` to disable vision-based drift
+  correction entirely.
+- **correction_threshold**: Minimum azimuth error in degrees before the dome
+  motor is commanded to move (hysteresis band).
+- **max_speed**: Upper limit for the proportional speed controller (0-100).
+
+### 4.7 Settings GUI
 
 You can also edit settings at runtime by clicking **⚙ SETTINGS** in the GUI.
 Changes are written to `config.yaml` when you press **SAVE**.
@@ -291,7 +311,85 @@ initial installation or whenever you change the telescope setup.
 
 **Requirements**: ASCOM connection and at least a simulation sensor.
 
-## 9. Troubleshooting
+## 9. Dome Drivers & Protocols
+
+### 9.1 Motor Types
+
+ARGUS supports three dome motor strategies. Select the appropriate type in
+`config.yaml` under `hardware.motor_type`:
+
+| Type | Description | Key config |
+|---|---|---|
+| `stepper` | Open-loop stepper motor. Position derived from steps-per-degree ratio. | `steps_per_degree` |
+| `encoder` | DC motor with encoder feedback (closed-loop). Stops when within tolerance. | `ticks_per_degree`, `encoder_tolerance` |
+| `timed` | Relay-driven motor without sensors. Position estimated by dead reckoning. | `degrees_per_second` |
+
+### 9.2 Communication Protocols
+
+The `hardware.protocol` setting selects the wire format for motor commands:
+
+| Protocol | Commands | Typical use |
+|---|---|---|
+| `argus` | `MOVE az speed`, `STOP`, `STATUS`, `HOME dir` | ARGUS Arduino firmware |
+| `lesvedome` | `G az`, `S`, `P`, `H` | LesveDome-compatible controllers |
+| `relay` | `RELAY CW`, `RELAY CCW`, `RELAY OFF` | Simple relay boards |
+
+### 9.3 Homing
+
+If your dome has a home-position switch, enable homing in the configuration:
+
+```yaml
+hardware:
+  homing:
+    enabled: true
+    azimuth: 0.0       # Position of the home switch in degrees
+    direction: "CW"    # Direction to search for the switch
+```
+
+ARGUS sends a HOME command on request and resets the internal position counter
+to the configured azimuth.
+
+## 10. ASCOM Alpaca Server
+
+ARGUS includes a built-in **ASCOM Alpaca** REST server that exposes the dome
+as a standard Alpaca Dome device on TCP port **11111**.
+
+Observatory automation software such as **NINA**, **Voyager**, or **SGPro** can
+connect to `http://<host>:11111/api/v1/dome/0/` and control the dome without
+installing a native ASCOM driver.
+
+### Supported Alpaca endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /azimuth` | Current dome azimuth |
+| `GET /slewing` | Whether the dome is moving |
+| `PUT /slewtoazimuth` | Command the dome to a target azimuth |
+| `PUT /park` | Park the dome at 0° (north) |
+| `PUT /abortslew` | Emergency stop |
+| `PUT /findhome` | Run a homing sequence |
+| `GET/PUT /slaved` | Query or set dome-slaving state |
+
+The server starts automatically on launch and runs in a background thread.
+
+## 11. Replay / Demo Mode
+
+ARGUS can replay recorded telescope sessions from CSV files. This is useful for
+testing, demonstrations, and verifying calibration without a live telescope.
+
+During replay, the real ASCOM handler is temporarily swapped with a
+`ReplayASCOMHandler` that feeds the recorded data into the control loop at the
+original (or accelerated) playback speed.
+
+### Supported CSV formats
+
+1. **Semicolon-delimited** (legacy):
+   `ISO_TIMESTAMP;LST;RA_MOUNT;DEC_MOUNT;HA_MOUNT;AZ_DEG;ALT_DEG;PIER_SIDE;STATUS`
+
+2. **Comma-delimited** (with header row):
+   `Timestamp_UTC_Local,Timestamp_Unix,Status,PierSide,HA_Current_Hour,Dec_Current_Deg,...`
+
+## 12. Troubleshooting
 
 ### ASCOM Connection Failed
 
@@ -324,7 +422,7 @@ initial installation or whenever you change the telescope setup.
 - Ensure `pyttsx3` is installed (`pip install pyttsx3`).
 - Check that a speech engine is available on your system.
 
-## 10. Safety Notes
+## 13. Safety Notes
 
 - **Collision avoidance**: When `telescope_protrudes` is enabled, ARGUS will
   park the telescope before large dome rotations. Always verify that the

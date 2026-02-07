@@ -17,16 +17,21 @@ ARGUS is a hybrid dome-slaving system designed for Windows that combines:
 ARGUS/
 ├── src/
 │   ├── __init__.py           # Package initialization
-│   ├── main.py               # Main application entry point
-│   ├── gui.py                # customtkinter GUI (Dark Mode)
+│   ├── main.py               # Main application entry point & controller
+│   ├── gui.py                # Flet GUI (Dark Mode, Sci-Fi dashboard)
 │   ├── ascom_handler.py      # ASCOM telescope communication
 │   ├── vision.py             # ArUco marker detection and tracking
 │   ├── serial_ctrl.py        # Arduino serial communication
 │   ├── math_utils.py         # Azimuth calculations and vector math
 │   ├── calibration.py        # GEM offset calibration solver
-│   ├── settings_gui.py       # Settings window for config editing
+│   ├── dome_drivers.py       # Dome motor drivers (stepper/encoder/timed)
+│   ├── alpaca_server.py      # ASCOM Alpaca REST server
+│   ├── replay_handler.py     # Replay mode for recorded sessions
+│   ├── data_loader.py        # Calibration CSV data loader
+│   ├── settings_gui.py       # Settings dialog for config editing
 │   ├── simulation_sensor.py  # Simulated dome sensor for testing
-│   └── voice.py              # Text-to-speech feedback
+│   ├── voice.py              # Text-to-speech feedback
+│   └── path_utils.py         # Portable base-path resolver
 ├── docs/
 │   ├── USER_MANUAL_EN.md     # User manual (English)
 │   └── USER_MANUAL_DE.md     # Benutzerhandbuch (Deutsch)
@@ -93,9 +98,19 @@ vision:
 ### Hardware Settings
 ```yaml
 hardware:
-  serial_port: "COM3"  # Arduino port
+  serial_port: "COM3"       # Arduino port
   baud_rate: 9600
   timeout: 1.0
+  motor_type: "stepper"     # stepper | encoder | timed
+  protocol: "argus"         # argus | lesvedome | relay
+  steps_per_degree: 100.0   # Stepper calibration
+  ticks_per_degree: 50.0    # Encoder calibration
+  degrees_per_second: 5.0   # Timed motor speed
+  encoder_tolerance: 0.5    # Encoder deadband (degrees)
+  homing:
+    enabled: false
+    azimuth: 0.0            # Home switch position (degrees)
+    direction: "CW"         # Search direction: CW or CCW
 ```
 
 ### Observatory Configuration
@@ -112,6 +127,23 @@ math:
     pier_height: 1.5    # meters
     gem_offset_east: 0.0
     gem_offset_north: 0.0
+```
+
+### Control Loop Settings
+```yaml
+control:
+  update_rate: 10                  # Hz
+  drift_correction_enabled: true
+  correction_threshold: 0.5        # degrees – minimum error before motor moves
+  max_speed: 100                   # motor speed units (0-100)
+```
+
+### Safety Settings
+```yaml
+safety:
+  telescope_protrudes: true        # true if the OTA extends into the dome slit
+  safe_altitude: 90.0              # park altitude (°) before large dome rotations
+  max_nudge_while_protruding: 2.0  # max dome correction (°) while telescope is in slit
 ```
 
 ## Usage
@@ -150,35 +182,74 @@ argus --config /path/to/custom_config.yaml
 
 ### Project Structure
 
-- **ascom_handler.py**: Handles all ASCOM telescope communication
-- **vision.py**: Manages camera input and ArUco marker detection
-- **serial_ctrl.py**: Controls Arduino via serial commands
-- **math_utils.py**: Performs all astronomical and geometric calculations
-- **gui.py**: Dark-mode GUI built with customtkinter (telemetry, status, controls, mode selector)
-- **main.py**: Integrates all components in a closed-loop control system
+- **main.py**: Integrates all components in a closed-loop control system (state machine, health monitoring, outlier rejection)
+- **gui.py**: Dark-mode Sci-Fi dashboard built with Flet (telemetry, radar, status indicators, mode selector)
+- **ascom_handler.py**: Handles all ASCOM telescope communication with auto-reconnect
+- **vision.py**: Manages camera input and ArUco marker detection, including camera auto-discovery
+- **serial_ctrl.py**: Controls Arduino via serial commands with auto-reconnect
+- **math_utils.py**: Performs all astronomical and geometric calculations (RA/Dec → Alt/Az → dome azimuth)
+- **calibration.py**: GEM offset solver using scipy least-squares optimisation
+- **dome_drivers.py**: Hardware-agnostic dome driver layer (stepper, encoder, timed) with protocol translators (ARGUS native, LesveDome, relay)
+- **alpaca_server.py**: ASCOM Alpaca REST server so observatory software (NINA, Voyager, …) can slave the dome
+- **replay_handler.py**: Mock ASCOM handler that replays recorded telescope sessions for testing and demos
+- **data_loader.py**: Loads calibration CSV files (semicolon and comma formats)
+- **settings_gui.py**: Flet AlertDialog-based settings panel for editing config.yaml at runtime
+- **simulation_sensor.py**: Simulated dome azimuth sensor for testing without hardware
+- **voice.py**: Threaded text-to-speech announcements (pyttsx3)
+- **path_utils.py**: Portable base-path resolver for frozen/EXE and development environments
 
 ### Key Features
 
 - **Closed-loop control**: Vision feedback corrects mathematical predictions
 - **GEM support**: Accounts for German Equatorial Mount geometry and offsets
-- **Configurable**: All parameters adjustable via YAML configuration
+- **Configurable**: All parameters adjustable via YAML configuration or the in-app settings dialog
 - **Robust**: Handles component failures gracefully (operates with partial functionality)
 - **Modular**: Each subsystem can be tested and developed independently
+- **Collision avoidance**: Parks telescope before large dome rotations when the OTA protrudes into the slit
+- **ASCOM Alpaca server**: Allows observatory automation software (NINA, Voyager, …) to control the dome
+
+### Dome Driver Types
+
+ARGUS supports three motor driver strategies via the `hardware.motor_type` setting:
+
+| Type | Description |
+|---|---|
+| `stepper` | Open-loop stepper motor. Position is derived from a steps-per-degree calibration factor. |
+| `encoder` | DC motor with encoder feedback (closed-loop). A configurable tolerance band prevents oscillation. |
+| `timed` | Relay-driven motor without position sensor. Position is estimated via dead reckoning. |
+
+### Communication Protocols
+
+The `hardware.protocol` setting selects the wire format sent to the motor controller:
+
+| Protocol | Description |
+|---|---|
+| `argus` | Native ARGUS protocol (`MOVE az speed`, `STOP`, `STATUS`, `HOME dir`) |
+| `lesvedome` | LesveDome industry-standard command set (`G az`, `S`, `P`, `H`) |
+| `relay` | Simple relay ON/OFF protocol for time-based motors |
+
+### ASCOM Alpaca Server
+
+When the Alpaca server module is available, ARGUS exposes itself as an ASCOM Alpaca Dome device on port **11111** (the Alpaca standard). Observatory automation tools like **NINA** or **Voyager** can connect to `http://<host>:11111/api/v1/dome/0/` and slave the dome without a native ASCOM driver.
 
 ## Arduino Protocol
 
-The Arduino should respond to these commands:
+The Arduino should respond to these commands (native ARGUS protocol):
 
 - `MOVE <azimuth> <speed>`: Move to azimuth (0-360°) at specified speed (0-100)
 - `STOP`: Emergency stop
 - `STATUS`: Query current position and status
+- `HOME <direction>`: Start a homing run (`CW` or `CCW`)
 
 Example:
 ```
 MOVE 180.50 50
-STOP
 STATUS
+HOME CW
+STOP
 ```
+
+See [arduino_example/README.md](arduino_example/README.md) for the full firmware example and wiring details.
 
 ## Troubleshooting
 
