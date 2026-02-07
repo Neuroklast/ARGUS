@@ -68,3 +68,8 @@ safety:
   telescope_protrudes: true   # True = danger of collision
   safe_altitude: 90.0         # Park position (e.g. zenith) for safe dome rotation
   max_nudge_while_protruding: 2.0  # Max dome correction in degrees while telescope is in slit
+
+# Dome Rotation Limits (Cable-Wrap Protection)
+dome:
+  az_min: 0.0     # Minimum allowed azimuth (degrees) – set to restrict rotation
+  az_max: 360.0   # Maximum allowed azimuth (degrees) – set to restrict rotation

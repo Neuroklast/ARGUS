@@ -321,6 +321,20 @@ class ArgusGUI:
             on_click=lambda e: self.toggle_night_mode(),
         )
 
+        # Help button (toolbar)
+        self.btn_help = ft.IconButton(
+            icon=ft.Icons.HELP_OUTLINE,
+            tooltip=t("gui.help_tooltip"),
+            icon_size=24,
+        )
+
+        # Wizard button (toolbar)
+        self.btn_wizard = ft.IconButton(
+            icon=ft.Icons.AUTO_FIX_HIGH,
+            tooltip=t("gui.setup_wizard"),
+            icon_size=24,
+        )
+
         # -- Build layout ------------------------------------------------
         self._build_layout()
         if auto_mount:
@@ -331,6 +345,21 @@ class ArgusGUI:
     # ===================================================================
     def _build_layout(self):
         """Assemble the full dashboard layout (does NOT add to page)."""
+
+        # Lists to track theme-dependent text elements for theme switching
+        self._heading_labels: list[ft.Text] = []
+        self._text_labels: list[ft.Text] = []
+
+        def _heading(key: str) -> ft.Text:
+            lbl = ft.Text(t(key), weight=ft.FontWeight.BOLD, size=11,
+                          color=self._theme["heading"])
+            self._heading_labels.append(lbl)
+            return lbl
+
+        def _text(key: str, **kwargs) -> ft.Text:
+            lbl = ft.Text(t(key), color=self._theme["text"], **kwargs)
+            self._text_labels.append(lbl)
+            return lbl
 
         # --- Video feed with live camera preview ---
         self.video_card = _card(
@@ -345,41 +374,47 @@ class ArgusGUI:
 
         # --- Telemetry card (extended) ---
         telemetry_card = _card(ft.Column([
-            ft.Text(t("gui.telemetry"), weight=ft.FontWeight.BOLD, size=11,
-                     color=self._theme["heading"]),
-            ft.Row([ft.Text(t("gui.mount_az"), size=11), self.lbl_mount_az],
+            _heading("gui.telemetry"),
+            ft.Row([_text("gui.mount_az", size=11), self.lbl_mount_az],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Row([ft.Text(t("gui.dome_az"), size=11), self.lbl_dome_az],
+            ft.Row([_text("gui.dome_az", size=11), self.lbl_dome_az],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Row([ft.Text(t("gui.error"), size=11), self.lbl_error],
+            ft.Row([_text("gui.error", size=11), self.lbl_error],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Divider(height=1, thickness=0.5),
-            ft.Row([ft.Text(t("gui.mount_alt"), size=10,
-                            color=self._theme["text"]),
+            ft.Row([_text("gui.mount_alt", size=10),
                     self.lbl_mount_alt],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Row([ft.Text(t("gui.sidereal_time"), size=10,
-                            color=self._theme["text"]),
+            ft.Row([_text("gui.sidereal_time", size=10),
                     self.lbl_sidereal],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Row([ft.Text(t("gui.tracking_rate"), size=10,
-                            color=self._theme["text"]),
+            ft.Row([_text("gui.tracking_rate", size=10),
                     self.lbl_tracking_rate],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Row([ft.Text(t("gui.pier_side"), size=10,
-                            color=self._theme["text"]),
+            ft.Row([_text("gui.pier_side", size=10),
                     self.lbl_pier_side],
                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
         ], spacing=2))
 
-        # --- Radar card (compact) ---
+        # --- Radar card (compact) with vertical telescope angle ---
+        self.lbl_telescope_alt_radar = ft.Text(
+            "ALT ---.-°", size=10, font_family="RobotoMono",
+            color=self._theme["accent"],
+        )
+        self.lbl_pier_side_radar = ft.Text(
+            "PIER ---", size=10, font_family="RobotoMono",
+            color=self._theme["accent"],
+        )
         radar_card = _card(ft.Column([
-            ft.Text(t("gui.dome_position"), weight=ft.FontWeight.BOLD, size=11,
-                     color=self._theme["heading"]),
+            _heading("gui.dome_position"),
             ft.Container(
                 content=self.radar_canvas,
                 alignment=ft.Alignment(0, 0),
             ),
+            ft.Row([
+                self.lbl_telescope_alt_radar,
+                self.lbl_pier_side_radar,
+            ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
         ], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
 
         # --- Status card ---
@@ -392,8 +427,7 @@ class ArgusGUI:
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2)
 
         status_card = _card(ft.Column([
-            ft.Text(t("gui.connection_status"), weight=ft.FontWeight.BOLD, size=11,
-                     color=self._theme["heading"]),
+            _heading("gui.connection_status"),
             ft.Row([
                 _indicator_col(t("gui.telescope"), self.ind_ascom, self.hint_ascom),
                 _indicator_col(t("gui.camera"), self.ind_vision, self.hint_vision),
@@ -403,19 +437,19 @@ class ArgusGUI:
         ], spacing=2))
 
         # --- Controls card (with CCW/CW labels) ---
+        self._lbl_ccw = ft.Text("CCW", size=9, text_align=ft.TextAlign.CENTER,
+                                color=self._theme["text"])
+        self._lbl_cw = ft.Text("CW", size=9, text_align=ft.TextAlign.CENTER,
+                               color=self._theme["text"])
+        self._text_labels.extend([self._lbl_ccw, self._lbl_cw])
         controls_card = _card(ft.Column([
-            ft.Text(t("gui.dome_control"), weight=ft.FontWeight.BOLD, size=11,
-                     color=self._theme["heading"]),
+            _heading("gui.dome_control"),
             ft.Row([
-                ft.Column([self.btn_ccw,
-                           ft.Text("CCW", size=9, text_align=ft.TextAlign.CENTER,
-                                   color=self._theme["text"])],
+                ft.Column([self.btn_ccw, self._lbl_ccw],
                           horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                           spacing=0),
                 self.btn_stop,
-                ft.Column([self.btn_cw,
-                           ft.Text("CW", size=9, text_align=ft.TextAlign.CENTER,
-                                   color=self._theme["text"])],
+                ft.Column([self.btn_cw, self._lbl_cw],
                           horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                           spacing=0),
             ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
@@ -423,29 +457,26 @@ class ArgusGUI:
 
         # --- Mode card ---
         mode_card = _card(ft.Column([
-            ft.Text(t("gui.operating_mode"), weight=ft.FontWeight.BOLD, size=11,
-                     color=self._theme["heading"]),
+            _heading("gui.operating_mode"),
             self.mode_selector,
         ], spacing=2))
 
         # --- Simulation card (telescope position sliders) ---
         self.sim_card = _card(ft.Column([
-            ft.Text(t("gui.simulation"), weight=ft.FontWeight.BOLD, size=11,
-                     color=self._theme["heading"]),
-            ft.Row([ft.Text(t("gui.sim_telescope_az"), size=10,
-                            color=self._theme["text"]),
+            _heading("gui.simulation"),
+            ft.Row([_text("gui.sim_telescope_az", size=10),
                     self.sim_az_slider], spacing=4),
-            ft.Row([ft.Text(t("gui.sim_telescope_alt"), size=10,
-                            color=self._theme["text"]),
+            ft.Row([_text("gui.sim_telescope_alt", size=10),
                     self.sim_alt_slider], spacing=4),
             ft.Row([self.btn_sim_slit], alignment=ft.MainAxisAlignment.CENTER),
         ], spacing=2))
 
-        # --- Toolbar card (settings, diagnostics, theme cycle) ---
+        # --- Toolbar card (settings, diagnostics, theme cycle, help, wizard) ---
         toolbar_card = _card(ft.Row([
-            ft.Text(t("gui.tools"), weight=ft.FontWeight.BOLD, size=11,
-                     color=self._theme["heading"]),
+            _heading("gui.tools"),
             ft.Row([
+                self.btn_wizard,
+                self.btn_help,
                 self.btn_night_mode,
                 self.btn_diagnostics,
                 self.btn_settings,
@@ -454,8 +485,7 @@ class ArgusGUI:
 
         # --- Log card (fixed height) ---
         self._log_card = _card(ft.Column([
-            ft.Text(t("gui.system_log"), weight=ft.FontWeight.BOLD, size=11,
-                     color=self._theme["heading"]),
+            _heading("gui.system_log"),
             self.log_list,
         ], spacing=2))
 
@@ -709,6 +739,18 @@ class ArgusGUI:
                     self.lbl_tracking_rate, self.lbl_pier_side):
             lbl.color = self._theme["accent"]
 
+        # Update radar altitude / pier side labels
+        self.lbl_telescope_alt_radar.color = self._theme["accent"]
+        self.lbl_pier_side_radar.color = self._theme["accent"]
+
+        # Update all heading labels (section titles)
+        for lbl in self._heading_labels:
+            lbl.color = self._theme["heading"]
+
+        # Update all text labels (body text)
+        for lbl in self._text_labels:
+            lbl.color = self._theme["text"]
+
         # Update all card backgrounds and borders
         for card in self._dashboard_cards:
             card.bgcolor = self._theme["card_bg"]
@@ -730,9 +772,13 @@ class ArgusGUI:
             else:
                 self._log_card.border = None
 
-        # Toggle icon
+        # Update toolbar icon colours
         self.btn_night_mode.icon = icons[self._theme_cycle_index]
         self.btn_night_mode.icon_color = self._theme["accent"]
+        self.btn_help.icon_color = self._theme["accent"]
+        self.btn_wizard.icon_color = self._theme["accent"]
+        self.btn_diagnostics.icon_color = self._theme["accent"]
+        self.btn_settings.icon_color = self._theme["accent"]
 
         try:
             self.page.update()
@@ -779,12 +825,14 @@ class ArgusGUI:
         # Extended telemetry
         if mount_alt is not None:
             self.lbl_mount_alt.value = f"{mount_alt:05.1f}°"
+            self.lbl_telescope_alt_radar.value = f"ALT {mount_alt:05.1f}°"
         if sidereal_time is not None:
             self.lbl_sidereal.value = sidereal_time
         if tracking_rate is not None:
             self.lbl_tracking_rate.value = tracking_rate
         if pier_side is not None:
             self.lbl_pier_side.value = pier_side
+            self.lbl_pier_side_radar.value = f"PIER {pier_side}"
 
         self.draw_radar(mount_az, dome_az)
 
@@ -946,6 +994,10 @@ class ArgusGUI:
     def show_diagnostics(self, report, dlg=None) -> None:
         """Open (or update) a dialog showing the diagnostics report.
 
+        When *dlg* is provided (from :meth:`show_diagnostics_loading`),
+        the loading content is replaced in-place so the dialog transitions
+        seamlessly without closing and re-opening.
+
         Args:
             report: A :class:`diagnostics.DiagReport` instance.
             dlg:    Optional pre-existing loading dialog to update.
@@ -959,6 +1011,8 @@ class ArgusGUI:
             Status.INFO: ("ℹ", "#3498DB"),
         }
 
+        th = self._theme
+
         rows: list = []
         for r in report.results:
             icon_char, icon_color = _STATUS_ICONS.get(
@@ -968,26 +1022,40 @@ class ArgusGUI:
                 ft.Text(icon_char, color=icon_color, size=14,
                         weight=ft.FontWeight.BOLD),
                 ft.Text(f"[{r.category}] {r.name}", size=12,
-                        weight=ft.FontWeight.BOLD),
-                ft.Text(r.message, size=11, color="#CCCCCC"),
+                        weight=ft.FontWeight.BOLD,
+                        color=th["heading"]),
+                ft.Text(r.message, size=11, color=th["text"]),
             ]
             if r.suggestion:
                 parts.append(ft.Text(
-                    f"→ {r.suggestion}", size=10, italic=True,
-                    color="#F1C40F",
+                    f"💡 {r.suggestion}", size=10, italic=True,
+                    color=th["accent"],
                 ))
             rows.append(ft.Container(
                 content=ft.Column(parts, spacing=2),
                 padding=6,
                 border=ft.Border(
-                    bottom=ft.BorderSide(1, "#333333"),
+                    bottom=ft.BorderSide(1, th["border"]),
                 ),
+            ))
+
+        # Troubleshooting tips for errors
+        if report.errors:
+            rows.append(ft.Container(
+                content=ft.Column([
+                    ft.Text(t("diag.tips_title"), size=12,
+                            weight=ft.FontWeight.BOLD, color=th["accent"]),
+                    ft.Text(t("diag.tips_body"), size=10, color=th["text"]),
+                ], spacing=4),
+                padding=8,
             ))
 
         # Summary header
         header = ft.Text(
-            f"Diagnostics: {report.summary}  ({report.duration_s}s)",
+            f"{t('gui.diagnostics_title')}: {report.summary}  "
+            f"({report.duration_s}s)",
             size=13, weight=ft.FontWeight.BOLD,
+            color=th["heading"],
         )
 
         result_content = ft.Container(
@@ -1001,23 +1069,8 @@ class ArgusGUI:
         )
 
         if dlg is not None:
-            # Close the loading dialog and replace with results dialog
-            dlg.open = False
-            try:
-                self.page.update()
-            except Exception:
-                pass
-            # Create fresh dialog to avoid stale content issue
-            new_dlg = ft.AlertDialog(
-                title=ft.Text(t("gui.diagnostics_title")),
-                content=result_content,
-                actions=[
-                    ft.TextButton(t("gui.close"),
-                                  on_click=lambda e: self._close_dialog(new_dlg)),
-                ],
-            )
-            self.page.overlay.append(new_dlg)
-            new_dlg.open = True
+            # Replace loading content in-place (seamless transition)
+            dlg.content = result_content
         else:
             dlg = ft.AlertDialog(
                 title=ft.Text(t("gui.diagnostics_title")),
@@ -1038,6 +1091,236 @@ class ArgusGUI:
     def _close_dialog(self, dlg: ft.AlertDialog) -> None:
         """Close an open dialog."""
         dlg.open = False
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    # ===================================================================
+    # Help dialog
+    # ===================================================================
+    def show_help_dialog(self) -> None:
+        """Display a help dialog with quick-start instructions."""
+        sections = [
+            (t("help.quick_start_title"), t("help.quick_start_body")),
+            (t("help.modes_title"), t("help.modes_body")),
+            (t("help.troubleshooting_title"), t("help.troubleshooting_body")),
+        ]
+        rows: list = []
+        for title, body in sections:
+            rows.append(ft.Container(
+                content=ft.Column([
+                    ft.Text(title, size=13, weight=ft.FontWeight.BOLD,
+                            color=self._theme["accent"]),
+                    ft.Text(body, size=11, color=self._theme["text"]),
+                ], spacing=4),
+                padding=6,
+                border=ft.Border(
+                    bottom=ft.BorderSide(1, self._theme["border"]),
+                ),
+            ))
+
+        dlg = ft.AlertDialog(
+            title=ft.Text(t("help.title")),
+            content=ft.Container(
+                content=ft.Column(rows, scroll=ft.ScrollMode.AUTO, spacing=4),
+                width=520,
+                height=380,
+            ),
+            actions=[
+                ft.TextButton(t("gui.close"),
+                              on_click=lambda e: self._close_dialog(dlg)),
+            ],
+        )
+        self.page.overlay.append(dlg)
+        dlg.open = True
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    # ===================================================================
+    # Setup wizard dialog
+    # ===================================================================
+    def show_setup_wizard(self, config: dict,
+                          on_save_callback=None) -> None:
+        """Display a step-by-step setup wizard for first-time configuration.
+
+        Args:
+            config: Current configuration dictionary.
+            on_save_callback: Called with the updated config dict on save.
+        """
+        steps = [
+            {
+                "key": "location",
+                "title": t("wizard.step_location_title"),
+                "help": t("wizard.step_location_help"),
+                "fields": [],
+            },
+            {
+                "key": "hardware",
+                "title": t("wizard.step_hardware_title"),
+                "help": t("wizard.step_hardware_help"),
+                "fields": [],
+            },
+            {
+                "key": "dome",
+                "title": t("wizard.step_dome_title"),
+                "help": t("wizard.step_dome_help"),
+                "fields": [],
+            },
+            {
+                "key": "finish",
+                "title": t("wizard.step_finish_title"),
+                "help": t("wizard.step_finish_help"),
+                "fields": [],
+            },
+        ]
+
+        obs = config.get("math", {}).get("observatory", {})
+        hw = config.get("hardware", {})
+        dome = config.get("math", {}).get("dome", {})
+
+        # Step 1: Location
+        tf_lat = ft.TextField(label=t("settings.latitude"),
+                              value=str(obs.get("latitude", 0.0)))
+        tf_lon = ft.TextField(label=t("settings.longitude"),
+                              value=str(obs.get("longitude", 0.0)))
+        tf_elev = ft.TextField(label=t("settings.elevation"),
+                               value=str(obs.get("elevation", 0)))
+        steps[0]["fields"] = [tf_lat, tf_lon, tf_elev]
+
+        # Step 2: Hardware
+        tf_port = ft.TextField(label=t("settings.serial_port"),
+                               value=str(hw.get("serial_port", "COM3")))
+        tf_baud = ft.TextField(label=t("settings.baud_rate"),
+                               value=str(hw.get("baud_rate", 9600)))
+        steps[1]["fields"] = [tf_port, tf_baud]
+
+        # Step 3: Dome geometry
+        tf_radius = ft.TextField(label=t("settings.dome_radius"),
+                                 value=str(dome.get("radius", 2.5)))
+        tf_slit_w = ft.TextField(label=t("settings.slit_width"),
+                                 value=str(dome.get("slit_width", 0.8)))
+        # Rotation limits
+        dome_cfg = config.get("dome", {})
+        tf_az_min = ft.TextField(
+            label=t("settings.az_min"),
+            value=str(dome_cfg.get("az_min", 0.0)),
+        )
+        tf_az_max = ft.TextField(
+            label=t("settings.az_max"),
+            value=str(dome_cfg.get("az_max", 360.0)),
+        )
+        steps[2]["fields"] = [tf_radius, tf_slit_w, tf_az_min, tf_az_max]
+
+        current_step = [0]
+
+        step_title = ft.Text(steps[0]["title"], size=16,
+                             weight=ft.FontWeight.BOLD,
+                             color=self._theme["accent"])
+        step_help = ft.Text(steps[0]["help"], size=11,
+                            color=self._theme["text"])
+        step_body = ft.Column(steps[0]["fields"], spacing=8)
+        step_indicator = ft.Text(
+            f"1 / {len(steps)}", size=11, color=self._theme["text"],
+        )
+
+        def _update_step():
+            idx = current_step[0]
+            s = steps[idx]
+            step_title.value = s["title"]
+            step_help.value = s["help"]
+            step_body.controls = s["fields"]
+            step_indicator.value = f"{idx + 1} / {len(steps)}"
+            btn_back.visible = idx > 0
+            btn_next.text = (t("wizard.finish")
+                             if idx == len(steps) - 1 else t("wizard.next"))
+            try:
+                self.page.update()
+            except Exception:
+                pass
+
+        def _on_next(e):
+            if current_step[0] < len(steps) - 1:
+                current_step[0] += 1
+                _update_step()
+            else:
+                # Finish – save values
+                _save_wizard()
+
+        def _on_back(e):
+            if current_step[0] > 0:
+                current_step[0] -= 1
+                _update_step()
+
+        def _to_float(val, default):
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return default
+
+        def _to_int(val, default):
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return default
+
+        def _save_wizard():
+            config.setdefault("math", {}).setdefault("observatory", {})
+            config["math"]["observatory"]["latitude"] = _to_float(
+                tf_lat.value, 0.0)
+            config["math"]["observatory"]["longitude"] = _to_float(
+                tf_lon.value, 0.0)
+            config["math"]["observatory"]["elevation"] = _to_float(
+                tf_elev.value, 0.0)
+
+            config.setdefault("hardware", {})
+            config["hardware"]["serial_port"] = tf_port.value
+            config["hardware"]["baud_rate"] = _to_int(tf_baud.value, 9600)
+
+            config.setdefault("math", {}).setdefault("dome", {})
+            config["math"]["dome"]["radius"] = _to_float(
+                tf_radius.value, 2.5)
+            config["math"]["dome"]["slit_width"] = _to_float(
+                tf_slit_w.value, 0.8)
+
+            config.setdefault("dome", {})
+            config["dome"]["az_min"] = _to_float(tf_az_min.value, 0.0)
+            config["dome"]["az_max"] = _to_float(tf_az_max.value, 360.0)
+
+            if on_save_callback:
+                on_save_callback(config)
+            self._close_dialog(dlg)
+
+        btn_back = ft.TextButton(t("wizard.back"), on_click=_on_back,
+                                 visible=False)
+        btn_next = ft.TextButton(t("wizard.next"), on_click=_on_next)
+
+        content = ft.Container(
+            content=ft.Column([
+                step_title,
+                ft.Container(
+                    content=step_help,
+                    padding=ft.Padding(0, 0, 0, 8),
+                ),
+                step_body,
+            ], scroll=ft.ScrollMode.AUTO, spacing=8),
+            width=480,
+            height=380,
+        )
+
+        dlg = ft.AlertDialog(
+            title=ft.Row([
+                ft.Text(t("wizard.title")),
+                step_indicator,
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            content=content,
+            actions=[btn_back, btn_next],
+            actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        )
+        self.page.overlay.append(dlg)
+        dlg.open = True
         try:
             self.page.update()
         except Exception:
