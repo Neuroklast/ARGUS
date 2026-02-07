@@ -446,6 +446,42 @@ Original-Geschwindigkeit (oder beschleunigt) in den Regelkreis einspeist.
 - **Stromausfall**: Stellen Sie sicher, dass Ihr Kuppelmotor eine
   mechanische Bremse oder einen Fail-Safe-Stopp-Mechanismus hat.
 
+## 14. Nachtmodus
+
+ARGUS enthält einen speziellen Nachtsicht-Modus, der die gesamte
+Benutzeroberfläche auf reines Schwarz mit roten Linien und rotem Text
+umschaltet. Dies schützt die Dunkeladaption der Augen bei nächtlichen
+Beobachtungen.
+
+- Klicken Sie auf das **Mond-Symbol** in der Werkzeugleiste, um den
+  Nachtmodus umzuschalten.
+- Alle Karten, Beschriftungen und Indikatoren wechseln auf ein
+  Rot-auf-Schwarz-Farbschema.
+- Der Modus bleibt aktiv, bis er erneut umgeschaltet wird.
+
+## 15. Sprache / Lokalisierung
+
+ARGUS unterstützt Englisch und Deutsch. Um die Sprache zu ändern:
+
+1. Öffnen Sie `config.yaml` und setzen Sie:
+   ```yaml
+   language: "de"   # "en" für Englisch, "de" für Deutsch
+   ```
+2. Starten Sie ARGUS neu. Alle UI-Beschriftungen, Tooltips, Einstellungen,
+   Splash-Nachrichten und Bannertexte erscheinen in der gewählten Sprache.
+
+## 16. Kamera-Overlay-HUD
+
+Die Live-Kameravorschau enthält ein Head-Up-Display (HUD) mit Echtzeit-
+Messdaten:
+
+- **Montierung Azimut** – aktueller Teleskop-Azimut
+- **Kuppel Azimut** – aktuelle Position des Kuppelspalts
+- **Fehler** – Nachführfehler mit farbcodierter Schwere (grün < 2°,
+  orange < 5°, rot ≥ 5°)
+- **Modus** – aktueller Betriebsmodus (MANUELL, AUTOMATIK, KALIBRIEREN)
+- **Zustand** – Systemzustand (HEALTHY, DEGRADED, CRITICAL)
+
 ---
 
 *ARGUS — Advanced Rotation Guidance Using Sensors*

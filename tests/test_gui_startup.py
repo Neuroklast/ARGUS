@@ -173,6 +173,7 @@ class TestTelemetryUpdate:
         gui = ArgusGUI(page)
         page.update.reset_mock()
         gui.update_telemetry(0.0, 0.0)
+        gui.batch_update()
         page.update.assert_called()
 
     def test_update_telemetry_tolerates_page_error(self):

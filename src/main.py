@@ -27,6 +27,7 @@ import flet as ft
 from gui import ArgusGUI, COLOR_BG
 from settings_gui import show_settings_dialog
 from simulation_sensor import SimulationSensor
+from localization import t, set_language
 
 # Hardware imports with graceful fallback --------------------------------
 try:
@@ -114,6 +115,7 @@ class GuiLogHandler(logging.Handler):
 # Default configuration – used as fallback when keys are missing / invalid
 # ---------------------------------------------------------------------------
 DEFAULT_CONFIG: dict = {
+    "language": "en",
     "ascom": {
         "telescope_prog_id": "ASCOM.Simulator.Telescope",
         "poll_interval": 1.0,
@@ -688,25 +690,25 @@ class ArgusController:
 
             # Update user-facing hint labels
             if ascom_ok:
-                self.gui.set_status_hint("ascom", "Connected")
+                self.gui.set_status_hint("ascom", t("gui.connected"))
             elif self.ascom is None:
-                self.gui.set_status_hint("ascom", "Not connected")
+                self.gui.set_status_hint("ascom", t("gui.not_connected"))
             else:
-                self.gui.set_status_hint("ascom", "Reconnecting…")
+                self.gui.set_status_hint("ascom", t("gui.reconnecting"))
 
             if vision_ok:
-                self.gui.set_status_hint("vision", "Connected")
+                self.gui.set_status_hint("vision", t("gui.connected"))
             elif self.vision is None:
-                self.gui.set_status_hint("vision", "No camera found")
+                self.gui.set_status_hint("vision", t("gui.no_camera_found"))
             else:
-                self.gui.set_status_hint("vision", "Reconnecting…")
+                self.gui.set_status_hint("vision", t("gui.reconnecting"))
 
             if motor_ok:
-                self.gui.set_status_hint("motor", "Connected")
+                self.gui.set_status_hint("motor", t("gui.connected"))
             elif self.serial is None:
-                self.gui.set_status_hint("motor", "Not connected")
+                self.gui.set_status_hint("motor", t("gui.not_connected"))
             else:
-                self.gui.set_status_hint("motor", "Reconnecting…")
+                self.gui.set_status_hint("motor", t("gui.reconnecting"))
 
             # Update the top-level connection banner
             self.gui.update_connection_banner(ascom_ok, vision_ok, motor_ok)
@@ -755,7 +757,21 @@ class ArgusController:
                 expected = (res[0] / 2, res[1] / 2)
             drift = self.vision.calculate_drift(marker_data, expected)
 
-        self.gui.update_camera_preview(frame, marker_data, drift)
+        _telem = {
+            "mount_az": getattr(self, '_last_mount_az', None),
+            "dome_az": self.sensor.get_azimuth(),
+            "error": None,
+            "mode": self.mode,
+            "health": self._health,
+        }
+        if _telem["mount_az"] is not None and _telem["dome_az"] is not None:
+            _err = _telem["mount_az"] - _telem["dome_az"]
+            if _err > 180:
+                _err -= 360
+            elif _err < -180:
+                _err += 360
+            _telem["error"] = _err
+        self.gui.update_camera_preview(frame, marker_data, drift, telemetry=_telem)
 
     # ---- Health checks --------------------------------------------------
     def check_system_health(self) -> str:
@@ -999,6 +1015,7 @@ class ArgusController:
 
                 if telescope_data and self.math_utils:
                     mount_az = telescope_data.get("azimuth", mount_az)
+                    self._last_mount_az = mount_az
 
                     # Step 2 – target dome azimuth
                     target_az = self.math_utils.calculate_required_azimuth(
@@ -1078,8 +1095,8 @@ class ArgusController:
                 try:
                     self.gui.update_telemetry(mount_az, dome_az)
                     self._update_indicators()
-                    # Update camera preview with detection overlay
                     self._update_camera_preview()
+                    self.gui.batch_update()
                 except Exception:
                     pass
 
@@ -1375,17 +1392,38 @@ def main(page: ft.Page):
     def _deferred_init():
         """Run heavy hardware initialisation in a background thread."""
         try:
-            _update_splash(0.1, "Loading configuration …")
+            _update_splash(0.05, t("splash.loading_config"))
             config = load_config()
 
-            _update_splash(0.2, "Building user interface …")
+            _update_splash(0.10, t("splash.building_ui"))
+            # Apply language from config
+            lang = config.get("language", "en")
+            try:
+                set_language(lang)
+            except Exception:
+                pass
+
             gui = ArgusGUI(page)
             page._argus_gui = gui
 
-            _update_splash(0.4, "Connecting hardware …")
+            _SPLASH_STEP_DELAY = 0.1  # seconds between splash steps
+
+            _update_splash(0.20, t("splash.init_math"))
+            time.sleep(_SPLASH_STEP_DELAY)
+
+            _update_splash(0.30, t("splash.init_ascom"))
+            time.sleep(_SPLASH_STEP_DELAY)
+
+            _update_splash(0.40, t("splash.init_serial"))
+            time.sleep(_SPLASH_STEP_DELAY)
+
+            _update_splash(0.50, t("splash.init_vision"))
+            time.sleep(_SPLASH_STEP_DELAY)
+
+            _update_splash(0.60, t("splash.init_voice"))
             controller = ArgusController(config=config, gui=gui)
 
-            _update_splash(0.8, "Starting Alpaca server …")
+            _update_splash(0.75, t("splash.start_alpaca"))
             # Start ASCOM Alpaca server (if available)
             alpaca = None
             if AlpacaDomeServer is not None:
@@ -1395,12 +1433,14 @@ def main(page: ft.Page):
                 except Exception as exc:
                     logger.warning("Failed to start Alpaca server: %s", exc)
 
+            _update_splash(0.85, t("splash.start_loop"))
+            time.sleep(_SPLASH_STEP_DELAY * 1.5)
+
             page._argus_controller = controller
             page._argus_alpaca = alpaca
 
-            _update_splash(1.0, "Ready")
-            import time as _time
-            _time.sleep(0.3)
+            _update_splash(1.0, t("splash.ready"))
+            time.sleep(0.3)
 
             # Remove the splash – the real GUI is already on the page.
             try:
@@ -1411,7 +1451,7 @@ def main(page: ft.Page):
 
         except Exception:
             logger.critical("Unhandled exception during init", exc_info=True)
-            loading_text.value = "⚠ Initialisation failed – see log"
+            loading_text.value = "\u26a0 Initialisation failed \u2013 see log"
             loading_bar.color = "#C0392B"
             loading_bar.value = 1.0
             try:

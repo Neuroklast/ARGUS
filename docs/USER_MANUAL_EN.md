@@ -434,6 +434,39 @@ original (or accelerated) playback speed.
 - **Power failure**: Ensure your dome motor has mechanical braking or a
   fail-safe stop mechanism.
 
+## 14. Night Mode
+
+ARGUS includes a dedicated night-vision mode that switches the entire interface
+to pure black with red lines and text. This preserves dark-adapted vision
+during night-time observing sessions.
+
+- Click the **moon icon** in the toolbar to toggle night mode.
+- All cards, labels, and indicators switch to a red-on-black colour scheme.
+- The mode persists until toggled off again.
+
+## 15. Language / Localization
+
+ARGUS supports English and German (Deutsch). To change the language:
+
+1. Open `config.yaml` and set:
+   ```yaml
+   language: "de"   # "en" for English, "de" for German
+   ```
+2. Restart ARGUS. All UI labels, tooltips, settings, splash messages, and
+   banner texts will appear in the selected language.
+
+## 16. Camera Overlay HUD
+
+The live camera preview includes a heads-up display (HUD) overlay that shows
+real-time measurement data:
+
+- **Mount Azimuth** – current telescope azimuth
+- **Dome Azimuth** – current dome slit position
+- **Error** – tracking error with colour-coded severity (green < 2°,
+  orange < 5°, red ≥ 5°)
+- **Mode** – current operating mode (MANUAL, AUTO-SLAVE, CALIBRATE)
+- **Health** – system health status (HEALTHY, DEGRADED, CRITICAL)
+
 ---
 
 *ARGUS — Advanced Rotation Guidance Using Sensors*
