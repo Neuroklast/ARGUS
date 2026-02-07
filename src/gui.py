@@ -162,6 +162,12 @@ class ArgusGUI:
             icon_size=28,
         )
 
+        # Diagnostics button
+        self.btn_diagnostics = ft.IconButton(
+            icon=ft.Icons.HEALTH_AND_SAFETY, tooltip="Run Diagnostics",
+            icon_size=28,
+        )
+
         # -- Build layout ------------------------------------------------
         self._build_layout()
 
@@ -242,7 +248,7 @@ class ArgusGUI:
         # --- Settings card ---
         settings_card = _card(ft.Row([
             ft.Text("SETTINGS", weight=ft.FontWeight.BOLD, size=13),
-            self.btn_settings,
+            ft.Row([self.btn_diagnostics, self.btn_settings], spacing=0),
         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
 
         # --- Log card ---
