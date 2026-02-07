@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -16,6 +18,30 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Auto-tag on main branch merge
+      if: github.ref == 'refs/heads/main'
+      id: auto_tag
+      shell: bash
+      run: |
+        # Determine the next patch version based on existing tags
+        LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+        if [ -z "$LATEST_TAG" ]; then
+          NEW_TAG="v0.1.0"
+        else
+          # Strip leading 'v' and split into major.minor.patch
+          VERSION="${LATEST_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          PATCH=$((PATCH + 1))
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+        fi
+        echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag "$NEW_TAG"
+        git push origin "$NEW_TAG"
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -42,9 +68,10 @@ jobs:
 
     # SCHRITT 4: Release hochladen
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
+      if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v1
       with:
+        tag_name: ${{ steps.auto_tag.outputs.new_tag || github.ref_name }}
         files: |
           dist/ARGUS_Setup.exe
           dist/ARGUS_Portable.zip
