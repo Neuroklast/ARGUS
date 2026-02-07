@@ -338,6 +338,11 @@ class ArgusController:
         # Simulation fallback (always available)
         self.sensor = SimulationSensor()
 
+        # Simulation mode state (virtual telescope position)
+        self._sim_mount_az: float = 180.0
+        self._sim_mount_alt: float = 45.0
+        self._sim_slit_open: bool = False
+
         # Hardware handles (``None`` = unavailable)
         self.ascom = None
         self.serial = None
@@ -365,6 +370,15 @@ class ArgusController:
                 gui.page, self.config, self._on_settings_saved,
             )
             gui.btn_diagnostics.on_click = lambda e: self._run_diagnostics()
+
+            # Simulation controls
+            gui.sim_az_slider.on_change = lambda e: self._on_sim_az_changed(
+                e.control.value
+            )
+            gui.sim_alt_slider.on_change = lambda e: self._on_sim_alt_changed(
+                e.control.value
+            )
+            gui.btn_sim_slit.on_click = lambda e: self._on_sim_slit_toggle()
 
         self._update_indicators()
 
@@ -960,6 +974,30 @@ class ArgusController:
         if self.serial:
             self.serial.send_command("CW 3")
 
+    # ---- Simulation controls --------------------------------------------
+    def _on_sim_az_changed(self, value: float) -> None:
+        """Handle simulated telescope azimuth slider change."""
+        self._sim_mount_az = float(value)
+
+    def _on_sim_alt_changed(self, value: float) -> None:
+        """Handle simulated telescope altitude slider change."""
+        self._sim_mount_alt = float(value)
+
+    def _on_sim_slit_toggle(self) -> None:
+        """Toggle the simulated slit open/closed state."""
+        self._sim_slit_open = not self._sim_slit_open
+        if self.gui is not None:
+            from localization import t
+            self.gui.set_slit_status(self._sim_slit_open)
+            self.gui.btn_sim_slit.content = ft.Text(
+                t("gui.close_slit") if self._sim_slit_open
+                else t("gui.open_slit")
+            )
+            self.gui.btn_sim_slit.icon = (
+                ft.Icons.CLOSE if self._sim_slit_open
+                else ft.Icons.OPEN_IN_BROWSER
+            )
+
     # ---- Background control loop ----------------------------------------
     def _control_loop(self):
         """Thread-safe control loop that drives MANUAL and AUTO-SLAVE.
@@ -978,6 +1016,7 @@ class ArgusController:
 
         last = time.time()
         mount_az = 180.0  # default when ASCOM is unavailable
+        mount_alt = 45.0
 
         while self._running:
           try:
@@ -1007,6 +1046,11 @@ class ArgusController:
             vision_ok = True
             vision_checked = False
 
+            # Extended telemetry defaults
+            sidereal_time = None
+            tracking_rate = None
+            pier_side = None
+
             if current_mode == "AUTO-SLAVE" and health != HEALTH_CRITICAL:
                 # Step 1 – telescope position
                 telescope_data = None
@@ -1015,7 +1059,13 @@ class ArgusController:
 
                 if telescope_data and self.math_utils:
                     mount_az = telescope_data.get("azimuth", mount_az)
+                    mount_alt = telescope_data.get("altitude", mount_alt)
                     self._last_mount_az = mount_az
+
+                    # Extended telemetry from ASCOM
+                    sidereal_time = telescope_data.get("sidereal_time")
+                    tracking_rate = telescope_data.get("tracking_rate")
+                    pier_side = telescope_data.get("side_of_pier")
 
                     # Step 2 – target dome azimuth
                     target_az = self.math_utils.calculate_required_azimuth(
@@ -1073,6 +1123,22 @@ class ArgusController:
             self.sensor.update(dt)
             dome_az = self.sensor.get_azimuth()
 
+            # -- Simulation mode: if no real ASCOM, use slider values -----
+            if self.ascom is None and current_mode == "MANUAL":
+                mount_az = self._sim_mount_az
+                mount_alt = self._sim_mount_alt
+                # In simulation, dome follows telescope with a proportional slew
+                sim_error = mount_az - dome_az
+                if sim_error > 180:
+                    sim_error -= 360
+                elif sim_error < -180:
+                    sim_error += 360
+                if abs(sim_error) > correction_threshold and not self.serial:
+                    sim_speed = min(abs(sim_error) * 2.0, 10.0)
+                    self.sensor.slew_rate = sim_speed if sim_error > 0 else -sim_speed
+                elif abs(sim_error) <= correction_threshold and not self.serial:
+                    self.sensor.slew_rate = 0.0
+
             # -- Voice feedback: Moving → Stopped -------------------------
             current_status = "Moving" if abs(self.sensor.slew_rate) > 1e-6 else "Stopped"
             if self._last_status == "Moving" and current_status == "Stopped":
@@ -1093,7 +1159,14 @@ class ArgusController:
             # Push telemetry and camera preview to GUI
             if self.gui is not None:
                 try:
-                    self.gui.update_telemetry(mount_az, dome_az)
+                    self.gui.update_telemetry(
+                        mount_az, dome_az,
+                        mount_alt=mount_alt,
+                        sidereal_time=sidereal_time,
+                        tracking_rate=tracking_rate,
+                        pier_side=pier_side,
+                    )
+                    self.gui.set_slit_status(self._sim_slit_open)
                     self._update_indicators()
                     self._update_camera_preview()
                     self.gui.batch_update()
@@ -1403,7 +1476,8 @@ def main(page: ft.Page):
             except Exception:
                 pass
 
-            gui = ArgusGUI(page)
+            # Build GUI without mounting – the splash is still on the page
+            gui = ArgusGUI(page, auto_mount=False)
             page._argus_gui = gui
 
             _SPLASH_STEP_DELAY = 0.1  # seconds between splash steps
@@ -1442,9 +1516,10 @@ def main(page: ft.Page):
             _update_splash(1.0, t("splash.ready"))
             time.sleep(0.3)
 
-            # Remove the splash – the real GUI is already on the page.
+            # Atomic splash → GUI transition: remove splash, mount GUI
             try:
-                page.controls.remove(loading_overlay)
+                page.clean()
+                gui.mount()
                 page.update()
             except Exception:
                 pass

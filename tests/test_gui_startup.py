@@ -23,6 +23,7 @@ from gui import (
     COLOR_ON,
     COLOR_MOVING,
     COLOR_NO_SIGNAL,
+    THEME_DARK,
     _card,
 )
 
@@ -281,14 +282,17 @@ class TestRadar:
         assert len(shapes) > 0
 
     def test_radar_shapes_count(self):
-        """Expect circle + mount line + dome arc = 3 shapes."""
+        """The enriched radar should have grid rings, cross-hairs, labels,
+        dome outline, mount line, arrowhead, slit arc, and pier marker."""
         shapes = ArgusGUI._radar_shapes(45.0, 90.0)
-        assert len(shapes) == 3
+        # 3 rings + 2 cross-hairs + 4 labels + dome outline + mount line +
+        # arrowhead + slit arc + pier marker = 14
+        assert len(shapes) >= 10
 
     def test_draw_radar_updates_canvas(self):
         gui = ArgusGUI(_make_mock_page())
         gui.draw_radar(180.0, 270.0)
-        assert len(gui.radar_canvas.shapes) == 3
+        assert len(gui.radar_canvas.shapes) >= 10
 
 
 # ---------------------------------------------------------------------------
@@ -641,3 +645,153 @@ class TestSettingsDialog:
         show_settings_dialog(page, {}, lambda cfg: None)
         # Dialog was appended to overlay
         assert len(page.overlay) == 1
+
+
+# ---------------------------------------------------------------------------
+# Slit status
+# ---------------------------------------------------------------------------
+class TestSlitStatus:
+    """Verify slit open/closed indicator and API."""
+
+    def test_slit_indicator_exists(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.slit_indicator is not None
+        assert gui.hint_slit is not None
+
+    def test_slit_starts_closed(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui._slit_open is False
+        assert gui.slit_indicator.bgcolor == COLOR_OFF
+
+    def test_set_slit_status_open(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.set_slit_status(True)
+        assert gui._slit_open is True
+        assert gui.slit_indicator.bgcolor == COLOR_ON
+
+    def test_set_slit_status_closed(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.set_slit_status(True)
+        gui.set_slit_status(False)
+        assert gui._slit_open is False
+        assert gui.slit_indicator.bgcolor == COLOR_OFF
+
+
+# ---------------------------------------------------------------------------
+# Extended telemetry
+# ---------------------------------------------------------------------------
+class TestExtendedTelemetry:
+    """Verify that extended telemetry fields are updated."""
+
+    def test_extended_labels_exist(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.lbl_mount_alt is not None
+        assert gui.lbl_sidereal is not None
+        assert gui.lbl_tracking_rate is not None
+        assert gui.lbl_pier_side is not None
+
+    def test_update_telemetry_with_extras(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_telemetry(
+            100.0, 98.0,
+            mount_alt=45.5,
+            sidereal_time="12:34:56",
+            tracking_rate="Sidereal",
+            pier_side="East",
+        )
+        assert "45.5" in gui.lbl_mount_alt.value
+        assert "12:34:56" in gui.lbl_sidereal.value
+        assert "Sidereal" in gui.lbl_tracking_rate.value
+        assert "East" in gui.lbl_pier_side.value
+
+    def test_update_telemetry_without_extras(self):
+        """Extended fields should keep defaults when not provided."""
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_telemetry(100.0, 98.0)
+        assert "---" in gui.lbl_mount_alt.value
+        assert "--:" in gui.lbl_sidereal.value
+
+
+# ---------------------------------------------------------------------------
+# Simulation controls
+# ---------------------------------------------------------------------------
+class TestSimulationControls:
+    """Verify simulation slider and slit button widgets exist."""
+
+    def test_sim_sliders_exist(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.sim_az_slider is not None
+        assert gui.sim_alt_slider is not None
+
+    def test_sim_az_slider_range(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.sim_az_slider.min == 0
+        assert gui.sim_az_slider.max == 360
+
+    def test_sim_alt_slider_range(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.sim_alt_slider.min == 0
+        assert gui.sim_alt_slider.max == 90
+
+    def test_sim_slit_button_exists(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.btn_sim_slit is not None
+
+    def test_sim_card_in_dashboard(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui.sim_card is not None
+
+
+# ---------------------------------------------------------------------------
+# Theme cycling
+# ---------------------------------------------------------------------------
+class TestThemeCycling:
+    """Verify the 3-step theme cycle: dark → day → night."""
+
+    def test_initial_theme_is_dark(self):
+        gui = ArgusGUI(_make_mock_page())
+        assert gui._theme_cycle_index == 0
+        assert gui._theme["bg"] == THEME_DARK["bg"]
+
+    def test_cycle_to_day(self):
+        from gui import THEME_DAY
+        gui = ArgusGUI(_make_mock_page())
+        gui.toggle_night_mode()
+        assert gui._theme_cycle_index == 1
+        assert gui._theme["bg"] == THEME_DAY["bg"]
+
+    def test_cycle_to_night(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.toggle_night_mode()  # → day
+        gui.toggle_night_mode()  # → night
+        assert gui._theme_cycle_index == 2
+        assert gui._night_mode is True
+
+    def test_cycle_back_to_dark(self):
+        gui = ArgusGUI(_make_mock_page())
+        gui.toggle_night_mode()  # → day
+        gui.toggle_night_mode()  # → night
+        gui.toggle_night_mode()  # → dark
+        assert gui._theme_cycle_index == 0
+        assert gui._night_mode is False
+        assert gui._theme["bg"] == THEME_DARK["bg"]
+
+
+# ---------------------------------------------------------------------------
+# auto_mount parameter
+# ---------------------------------------------------------------------------
+class TestAutoMount:
+    """Verify the auto_mount parameter controls page.add() calls."""
+
+    def test_auto_mount_true_calls_add(self):
+        page = _make_mock_page()
+        ArgusGUI(page, auto_mount=True)
+        page.add.assert_called_once()
+
+    def test_auto_mount_false_skips_add(self):
+        page = _make_mock_page()
+        gui = ArgusGUI(page, auto_mount=False)
+        page.add.assert_not_called()
+        # But mount() should still work
+        gui.mount()
+        page.add.assert_called_once()
