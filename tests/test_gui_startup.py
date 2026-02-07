@@ -161,6 +161,13 @@ class TestTelemetryUpdate:
         # Difference is 355 - 5 = 350, normalised to -10
         assert "-010.0" in gui.lbl_error.value
 
+    def test_update_telemetry_error_at_180_boundary(self):
+        """Error at exactly 180° should be +180 (not flipped)."""
+        gui = ArgusGUI(_make_mock_page())
+        gui.update_telemetry(180.0, 0.0)
+        # 180 - 0 = 180 → not > 180, so stays as +180
+        assert "+180.0" in gui.lbl_error.value
+
     def test_update_telemetry_calls_page_update(self):
         page = _make_mock_page()
         gui = ArgusGUI(page)
