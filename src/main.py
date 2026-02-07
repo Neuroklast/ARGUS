@@ -11,8 +11,10 @@ Includes degraded-mode logic, outlier rejection, hysteresis, and
 production-grade rotating log files.
 """
 
+import atexit
 import logging
 import logging.handlers
+import signal
 import sys
 import threading
 import time
@@ -308,6 +310,7 @@ class ArgusController:
         self._last_status: str = "Stopped"
         self._last_vision_ok: bool = True
         self._health: str = HEALTH_HEALTHY
+        self._last_reconnect_time: float = 0.0
 
         # -- Alpaca / slaving state --------------------------------------
         self.is_slaved: bool = False
@@ -359,8 +362,12 @@ class ArgusController:
             gui.btn_settings.on_click = lambda e: show_settings_dialog(
                 gui.page, self.config, self._on_settings_saved,
             )
+            gui.btn_diagnostics.on_click = lambda e: self._run_diagnostics()
 
         self._update_indicators()
+
+        # -- Failsafe: register emergency stop on exit/crash ---------------
+        self._register_failsafes()
 
         # -- Background control loop -------------------------------------
         self._thread = threading.Thread(target=self._control_loop, daemon=True)
@@ -390,6 +397,54 @@ class ArgusController:
             format=fmt,
             handlers=handlers or [logging.StreamHandler()],
         )
+
+    # ---- Failsafe mechanisms -------------------------------------------
+    def _register_failsafes(self):
+        """Register emergency-stop handlers for process exit and signals.
+
+        Ensures motors are stopped immediately when:
+        * The Python process exits (atexit)
+        * An unhandled exception reaches the top level
+        * A termination signal (SIGTERM/SIGINT) is received
+        """
+        atexit.register(self._emergency_stop)
+
+        self._orig_excepthook = sys.excepthook
+        sys.excepthook = self._crash_handler
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                signal.signal(sig, self._signal_handler)
+            except (OSError, ValueError):
+                pass  # Cannot set signal handler from non-main thread
+
+    def _emergency_stop(self):
+        """Unconditionally stop all motors – used as a last-resort failsafe."""
+        self._running = False
+        try:
+            if self.dome_driver is not None:
+                self.dome_driver.abort()
+        except Exception:
+            pass
+        try:
+            if self.serial is not None and self.serial.connected:
+                self.serial.stop_motor()
+        except Exception:
+            pass
+        self.sensor.slew_rate = 0.0
+
+    def _crash_handler(self, exc_type, exc_value, exc_tb):
+        """Global exception hook: stop motors, then call the original hook."""
+        logger.critical("Unhandled exception – EMERGENCY STOP", exc_info=(exc_type, exc_value, exc_tb))
+        self._emergency_stop()
+        if self._orig_excepthook:
+            self._orig_excepthook(exc_type, exc_value, exc_tb)
+
+    def _signal_handler(self, signum, frame):
+        """Handle SIGTERM/SIGINT: stop motors and shut down cleanly."""
+        logger.warning("Signal %s received – EMERGENCY STOP", signum)
+        self._emergency_stop()
+        self.shutdown()
 
     # ---- Hardware initialisation helpers --------------------------------
     def _init_math_utils(self):
@@ -619,22 +674,42 @@ class ArgusController:
         logger.info("Homing complete – position set to %.1f°", home_az)
 
     def _update_indicators(self):
-        """Push current hardware status to the GUI indicator badges."""
+        """Push current hardware status to the GUI indicator badges and hints."""
         if self.gui is None:
             return
         try:
-            self.gui.set_indicator(
-                "ascom",
-                self.ascom is not None and self.ascom.connected,
-            )
-            self.gui.set_indicator(
-                "vision",
-                self.vision is not None and self.vision.camera_open,
-            )
-            self.gui.set_indicator(
-                "motor",
-                self.serial is not None and self.serial.connected,
-            )
+            ascom_ok = self.ascom is not None and self.ascom.connected
+            vision_ok = self.vision is not None and self.vision.camera_open
+            motor_ok = self.serial is not None and self.serial.connected
+
+            self.gui.set_indicator("ascom", ascom_ok)
+            self.gui.set_indicator("vision", vision_ok)
+            self.gui.set_indicator("motor", motor_ok)
+
+            # Update user-facing hint labels
+            if ascom_ok:
+                self.gui.set_status_hint("ascom", "Connected")
+            elif self.ascom is None:
+                self.gui.set_status_hint("ascom", "Not connected")
+            else:
+                self.gui.set_status_hint("ascom", "Reconnecting…")
+
+            if vision_ok:
+                self.gui.set_status_hint("vision", "Connected")
+            elif self.vision is None:
+                self.gui.set_status_hint("vision", "No camera found")
+            else:
+                self.gui.set_status_hint("vision", "Reconnecting…")
+
+            if motor_ok:
+                self.gui.set_status_hint("motor", "Connected")
+            elif self.serial is None:
+                self.gui.set_status_hint("motor", "Not connected")
+            else:
+                self.gui.set_status_hint("motor", "Reconnecting…")
+
+            # Update the top-level connection banner
+            self.gui.update_connection_banner(ascom_ok, vision_ok, motor_ok)
         except Exception:
             pass
 
@@ -662,6 +737,69 @@ class ArgusController:
             self._health = new_health
 
         return new_health
+
+    # ---- Periodic hardware reconnection ---------------------------------
+    _RECONNECT_INTERVAL = 10.0  # seconds between reconnection attempts
+
+    def _try_reconnect_hardware(self) -> None:
+        """Attempt to reconnect disconnected hardware components.
+
+        Called periodically from the control loop so that newly attached
+        devices are detected automatically without restarting the app.
+        """
+        # ASCOM telescope
+        if (self.ascom is None or not self.ascom.connected) and ASCOMHandler is not None:
+            try:
+                ascom_cfg = self.config.get("ascom", {})
+                prog_id = ascom_cfg.get(
+                    "telescope_prog_id", "ASCOM.Simulator.Telescope"
+                )
+                handler = ASCOMHandler(prog_id)
+                if handler.connect():
+                    self.ascom = handler
+                    logger.info("ASCOM telescope reconnected")
+                    if self.gui:
+                        self.gui.write_log("✓ Telescope connected")
+            except Exception:
+                pass
+
+        # Serial motor controller
+        if (self.serial is None or not self.serial.connected) and SerialController is not None:
+            try:
+                hw_cfg = self.config.get("hardware", {})
+                ctrl = SerialController(
+                    port=hw_cfg.get("serial_port", "COM3"),
+                    baud_rate=hw_cfg.get("baud_rate", 9600),
+                    timeout=hw_cfg.get("timeout", 1.0),
+                )
+                if ctrl.connect():
+                    self.serial = ctrl
+                    self._init_dome_driver()
+                    logger.info("Serial motor controller reconnected")
+                    if self.gui:
+                        self.gui.write_log("✓ Motor controller connected")
+            except Exception:
+                pass
+
+        # Vision / camera
+        if (self.vision is None or not self.vision.camera_open) and VisionSystem is not None:
+            try:
+                vis_cfg = self.config.get("vision", {})
+                res = vis_cfg.get("resolution", {})
+                aruco_cfg = vis_cfg.get("aruco", {})
+                cam = VisionSystem(
+                    camera_index=vis_cfg.get("camera_index", 0),
+                    resolution=(res.get("width", 1280), res.get("height", 720)),
+                    aruco_dict=aruco_cfg.get("dictionary", "DICT_4X4_50"),
+                    marker_size=aruco_cfg.get("marker_size", 0.05),
+                )
+                if cam.open_camera():
+                    self.vision = cam
+                    logger.info("Camera reconnected")
+                    if self.gui:
+                        self.gui.write_log("✓ Camera connected")
+            except Exception:
+                pass
 
     # ---- Outlier rejection (vision drift) -------------------------------
     def _filter_drift(self, drift_az: float) -> Optional[float]:
@@ -764,7 +902,12 @@ class ArgusController:
 
     # ---- Background control loop ----------------------------------------
     def _control_loop(self):
-        """Thread-safe control loop that drives MANUAL and AUTO-SLAVE."""
+        """Thread-safe control loop that drives MANUAL and AUTO-SLAVE.
+
+        The entire loop body is wrapped in a try/except so that any
+        unexpected error triggers an emergency motor stop rather than
+        letting the dome continue to rotate uncontrolled.
+        """
         ctrl_cfg = self.config.get("control", {})
         update_rate = ctrl_cfg.get("update_rate", 10)
         interval = 1.0 / max(update_rate, 1)
@@ -777,11 +920,17 @@ class ArgusController:
         mount_az = 180.0  # default when ASCOM is unavailable
 
         while self._running:
+          try:
             now = time.time()
             dt = now - last
             last = now
 
             current_mode = self.mode
+
+            # -- Periodic hardware reconnection ---------------------------
+            if now - self._last_reconnect_time >= self._RECONNECT_INTERVAL:
+                self._last_reconnect_time = now
+                self._try_reconnect_hardware()
 
             # -- Health check (cyclic) ------------------------------------
             health = self.check_system_health()
@@ -889,6 +1038,20 @@ class ArgusController:
                     pass
 
             time.sleep(interval)
+          except Exception:
+            # Failsafe: any unexpected error in the loop body must stop
+            # all motors immediately to prevent uncontrolled dome rotation.
+            logger.critical(
+                "Control loop error – EMERGENCY STOP", exc_info=True,
+            )
+            self._emergency_stop()
+            if self.gui is not None:
+                try:
+                    self.gui.write_log(
+                        "⚠ EMERGENCY STOP – control loop error (see log)"
+                    )
+                except Exception:
+                    pass
 
     # ---- Safe dome slewing (collision avoidance) --------------------------
     def safe_slew_dome(self, target_dome_az: float) -> None:
@@ -1090,6 +1253,18 @@ class ArgusController:
         self.config = new_config
         logger.info("Configuration updated from settings dialog")
 
+    # ---- Diagnostics callback ---------------------------------------------
+    def _run_diagnostics(self) -> None:
+        """Run system diagnostics and show results in the GUI."""
+        try:
+            from diagnostics import SystemDiagnostics
+            diag = SystemDiagnostics(self.config, controller=self)
+            report = diag.run_all()
+            if self.gui:
+                self.gui.show_diagnostics(report)
+        except Exception as exc:
+            logger.error("Diagnostics failed: %s", exc)
+
 
 def main(page: ft.Page):
     """Flet main entry point – configures the page and starts the controller."""
@@ -1115,6 +1290,13 @@ def main(page: ft.Page):
             alpaca.start()
         except Exception as exc:
             logger.warning("Failed to start Alpaca server: %s", exc)
+
+    # Store references on the page to prevent garbage collection.
+    # Without this, the local variables are collected when main() returns,
+    # causing the Flet session to be destroyed ("Session was garbage collected").
+    page._argus_gui = gui
+    page._argus_controller = controller
+    page._argus_alpaca = alpaca
 
 
 if __name__ == "__main__":

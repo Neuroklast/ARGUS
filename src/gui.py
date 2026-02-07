@@ -95,6 +95,31 @@ class ArgusGUI:
         self.ind_motor = ft.Container(width=40, height=18, bgcolor=COLOR_OFF,
                                        border_radius=6)
 
+        # Status hint labels (user-facing text next to each indicator)
+        self.hint_ascom = ft.Text(
+            "Not connected", size=10, color=COLOR_NO_SIGNAL, italic=True,
+        )
+        self.hint_vision = ft.Text(
+            "Not connected", size=10, color=COLOR_NO_SIGNAL, italic=True,
+        )
+        self.hint_motor = ft.Text(
+            "Not connected", size=10, color=COLOR_NO_SIGNAL, italic=True,
+        )
+
+        # Connection banner (top-level status bar)
+        self.connection_banner = ft.Container(
+            content=ft.Text(
+                "⚠ No hardware connected – running in simulation mode",
+                size=12, color="#000000", weight=ft.FontWeight.BOLD,
+                text_align=ft.TextAlign.CENTER,
+            ),
+            bgcolor="#F1C40F",
+            padding=6,
+            border_radius=8,
+            alignment=ft.Alignment(0, 0),
+            visible=True,
+        )
+
         # Radar canvas
         self.radar_canvas = cv.Canvas(
             width=_RADAR_SIZE, height=_RADAR_SIZE,
@@ -134,6 +159,12 @@ class ArgusGUI:
         # Settings button
         self.btn_settings = ft.IconButton(
             icon=ft.Icons.SETTINGS, tooltip="Settings",
+            icon_size=28,
+        )
+
+        # Diagnostics button
+        self.btn_diagnostics = ft.IconButton(
+            icon=ft.Icons.HEALTH_AND_SAFETY, tooltip="Run Diagnostics",
             icon_size=28,
         )
 
@@ -183,18 +214,20 @@ class ArgusGUI:
         ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
 
         # --- Status card ---
-        def _indicator_col(label: str, badge: ft.Container) -> ft.Column:
+        def _indicator_col(label: str, badge: ft.Container,
+                           hint: ft.Text) -> ft.Column:
             return ft.Column([
                 ft.Text(label, size=11, text_align=ft.TextAlign.CENTER),
                 badge,
+                hint,
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2)
 
         status_card = _card(ft.Column([
             ft.Text("STATUS", weight=ft.FontWeight.BOLD, size=13),
             ft.Row([
-                _indicator_col("ASCOM", self.ind_ascom),
-                _indicator_col("VISION", self.ind_vision),
-                _indicator_col("MOTOR", self.ind_motor),
+                _indicator_col("ASCOM", self.ind_ascom, self.hint_ascom),
+                _indicator_col("VISION", self.ind_vision, self.hint_vision),
+                _indicator_col("MOTOR", self.ind_motor, self.hint_motor),
             ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
         ], spacing=4))
 
@@ -215,7 +248,7 @@ class ArgusGUI:
         # --- Settings card ---
         settings_card = _card(ft.Row([
             ft.Text("SETTINGS", weight=ft.FontWeight.BOLD, size=13),
-            self.btn_settings,
+            ft.Row([self.btn_diagnostics, self.btn_settings], spacing=0),
         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN))
 
         # --- Log card ---
@@ -242,6 +275,7 @@ class ArgusGUI:
 
         self.page.add(
             ft.Column([
+                self.connection_banner,
                 ft.Container(content=main_row, expand=True),
                 log_card,
             ], expand=True, spacing=8),
@@ -372,9 +406,153 @@ class ArgusGUI:
     # Backward-compatible alias used by ArgusController
     set_indicator = set_status
 
+    def set_status_hint(self, component: str, text: str) -> None:
+        """Update the hint label below a status indicator.
 
-# -----------------------------------------------------------------------
-# Direct execution (standalone preview)
+        Args:
+            component: One of ``"ascom"``, ``"vision"``, ``"motor"``.
+            text:      Short human-readable status hint.
+        """
+        hint_mapping = {
+            "ascom": self.hint_ascom,
+            "vision": self.hint_vision,
+            "motor": self.hint_motor,
+        }
+        hint = hint_mapping.get(component)
+        if hint is None:
+            return
+        hint.value = text
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def update_connection_banner(self, ascom_ok: bool, vision_ok: bool,
+                                 motor_ok: bool) -> None:
+        """Update the top-level connection status banner.
+
+        The banner is hidden when all components are connected, shows
+        a yellow warning when partially connected, and a red alert
+        when nothing is connected.
+
+        Args:
+            ascom_ok:  Whether the telescope is connected.
+            vision_ok: Whether the camera is connected.
+            motor_ok:  Whether the motor controller is connected.
+        """
+        all_ok = ascom_ok and vision_ok and motor_ok
+        none_ok = not ascom_ok and not vision_ok and not motor_ok
+
+        if all_ok:
+            self.connection_banner.visible = False
+        else:
+            self.connection_banner.visible = True
+            parts = []
+            if not ascom_ok:
+                parts.append("Telescope")
+            if not vision_ok:
+                parts.append("Camera")
+            if not motor_ok:
+                parts.append("Motor")
+            missing = ", ".join(parts)
+
+            if none_ok:
+                msg = "⚠ No hardware connected – running in simulation mode"
+                bg = "#C0392B"
+                fg = "#FFFFFF"
+            else:
+                msg = f"⚠ {missing} not connected – limited functionality"
+                bg = "#F1C40F"
+                fg = "#000000"
+
+            self.connection_banner.bgcolor = bg
+            banner_text = self.connection_banner.content
+            banner_text.value = msg
+            banner_text.color = fg
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    # ===================================================================
+    # Diagnostics dialog
+    # ===================================================================
+    def show_diagnostics(self, report) -> None:
+        """Open a dialog showing the results of a diagnostics report.
+
+        Args:
+            report: A :class:`diagnostics.DiagReport` instance.
+        """
+        from diagnostics import Status
+
+        _STATUS_ICONS = {
+            Status.OK: ("✓", "#2ECC71"),
+            Status.WARNING: ("⚠", "#F1C40F"),
+            Status.ERROR: ("✗", "#E74C3C"),
+            Status.INFO: ("ℹ", "#3498DB"),
+        }
+
+        rows: list = []
+        for r in report.results:
+            icon_char, icon_color = _STATUS_ICONS.get(
+                r.status, ("?", "#888888")
+            )
+            parts = [
+                ft.Text(icon_char, color=icon_color, size=14,
+                        weight=ft.FontWeight.BOLD),
+                ft.Text(f"[{r.category}] {r.name}", size=12,
+                        weight=ft.FontWeight.BOLD),
+                ft.Text(r.message, size=11, color="#CCCCCC"),
+            ]
+            if r.suggestion:
+                parts.append(ft.Text(
+                    f"→ {r.suggestion}", size=10, italic=True,
+                    color="#F1C40F",
+                ))
+            rows.append(ft.Container(
+                content=ft.Column(parts, spacing=2),
+                padding=6,
+                border=ft.Border(
+                    bottom=ft.BorderSide(1, "#333333"),
+                ),
+            ))
+
+        # Summary header
+        header = ft.Text(
+            f"Diagnostics: {report.summary}  ({report.duration_s}s)",
+            size=13, weight=ft.FontWeight.BOLD,
+        )
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("System Diagnostics"),
+            content=ft.Container(
+                content=ft.Column(
+                    [header] + rows,
+                    scroll=ft.ScrollMode.AUTO,
+                    spacing=4,
+                ),
+                width=560,
+                height=420,
+            ),
+            actions=[
+                ft.TextButton("Close", on_click=lambda e: self._close_dialog(dlg)),
+            ],
+        )
+        self.page.overlay.append(dlg)
+        dlg.open = True
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _close_dialog(self, dlg: ft.AlertDialog) -> None:
+        """Close an open dialog."""
+        dlg.open = False
+        try:
+            self.page.update()
+        except Exception:
+            pass
 # -----------------------------------------------------------------------
 def _standalone_main(page: ft.Page):
     page.title = "ARGUS – Dome Control"
@@ -382,7 +560,9 @@ def _standalone_main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK
     page.window.width = 1280
     page.window.height = 720
-    ArgusGUI(page)
+    gui = ArgusGUI(page)
+    # Keep a reference on the page to prevent garbage collection
+    page._argus_gui = gui
 
 
 if __name__ == "__main__":
