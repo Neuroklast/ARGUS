@@ -138,3 +138,9 @@ config_local.yaml
 *.log
 test_structure.py
 PROJECT_SUMMARY.md
+
+# Web frontend
+web/node_modules/
+web/dist/
+src/static/
+

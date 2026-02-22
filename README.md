@@ -4,55 +4,146 @@ A.R.G.U.S. steuert Sternwarten-Kuppeln hybrid: Präzise Vektorberechnung der Mon
 
 ## Overview
 
-ARGUS is a hybrid dome-slaving system designed for Windows that combines:
+ARGUS is a hybrid dome-slaving system that runs on **Raspberry Pi** or a normal PC (Windows/Linux/macOS) and can be controlled remotely from any browser.  It combines:
 
-1. **ASCOM Integration**: Retrieves telescope data (RA/Dec/SideOfPier) via `win32com.client`
+1. **ASCOM Integration**: Retrieves telescope data (RA/Dec/SideOfPier) via `win32com.client` (Windows) or ASCOM Alpaca
 2. **Vision System**: Uses OpenCV to track ArUco markers on the dome slit for drift correction
 3. **Mathematical Calculations**: Computes required dome azimuth using vector mathematics (NumPy/Astropy) with GEM offset support
 4. **Hardware Control**: Sends motor commands to Arduino via `pyserial`
+5. **Web Interface**: React 19 + Vite + Tailwind CSS v4 frontend served by FastAPI
 
 ## Architecture
 
 ```
 ARGUS/
-├── src/
-│   ├── __init__.py           # Package initialization
-│   ├── main.py               # Main application entry point & controller
-│   ├── gui.py                # Flet GUI (Dark Mode, Sci-Fi dashboard)
-│   ├── ascom_handler.py      # ASCOM telescope communication
-│   ├── vision.py             # ArUco marker detection and tracking
-│   ├── serial_ctrl.py        # Arduino serial communication
-│   ├── math_utils.py         # Azimuth calculations and vector math
-│   ├── calibration.py        # GEM offset calibration solver
-│   ├── dome_drivers.py       # Dome motor drivers (stepper/encoder/timed)
-│   ├── alpaca_server.py      # ASCOM Alpaca REST server
-│   ├── replay_handler.py     # Replay mode for recorded sessions
-│   ├── data_loader.py        # Calibration CSV data loader
-│   ├── settings_gui.py       # Settings dialog for config editing
-│   ├── simulation_sensor.py  # Simulated dome sensor for testing
-│   ├── voice.py              # Text-to-speech feedback
-│   └── path_utils.py         # Portable base-path resolver
+├── src/                          # Python backend
+│   ├── argus_controller.py       # Headless hardware controller (web mode)
+│   ├── web_server.py             # FastAPI REST + WebSocket + MJPEG
+│   ├── main.py                   # Launcher (--mode web|gui)
+│   ├── gui.py                    # Flet GUI (--mode gui, dark mode dashboard)
+│   ├── ascom_handler.py          # ASCOM telescope communication
+│   ├── vision.py                 # ArUco marker detection and tracking
+│   ├── serial_ctrl.py            # Arduino serial communication
+│   ├── math_utils.py             # Azimuth calculations and vector math
+│   ├── calibration.py            # GEM offset calibration solver
+│   ├── dome_drivers.py           # Dome motor drivers (stepper/encoder/timed)
+│   ├── alpaca_server.py          # ASCOM Alpaca REST server (port 11111)
+│   ├── replay_handler.py         # Replay mode for recorded sessions
+│   ├── data_loader.py            # Calibration CSV data loader
+│   ├── settings_gui.py           # Settings dialog for Flet GUI
+│   ├── simulation_sensor.py      # Simulated dome sensor for testing
+│   ├── voice.py                  # Text-to-speech feedback
+│   └── path_utils.py             # Portable base-path resolver
+├── web/                          # React 19 frontend
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tailwind.config.ts
+│   ├── tsconfig.json
+│   ├── index.html
+│   └── src/
+│       ├── App.tsx               # Main layout (3-column dashboard)
+│       ├── hooks/
+│       │   ├── useArgusSocket.ts # WebSocket hook (auto-reconnect)
+│       │   └── useArgusApi.ts    # REST API hook
+│       └── components/
+│           ├── DomeRadar.tsx     # SVG radar (dome + mount pointers)
+│           ├── AzimuthGauge.tsx  # Azimuth readout with error colour
+│           ├── ControlPanel.tsx  # GoTo, Stop, Mode toggle, Park, Home
+│           ├── StatusBar.tsx     # HW badges + mode + WS indicator
+│           ├── LogTerminal.tsx   # Live colour-coded log stream
+│           ├── CameraFeed.tsx    # MJPEG stream + marker overlay
+│           ├── AzimuthChart.tsx  # Recharts 60-s rolling chart
+│           ├── SettingsPanel.tsx # config.yaml editor
+│           └── SafetyIndicator.tsx # Safety/limit warnings
 ├── docs/
-│   ├── USER_MANUAL_EN.md     # User manual (English)
-│   └── USER_MANUAL_DE.md     # Benutzerhandbuch (Deutsch)
-├── tests/                    # Automated test suite
-├── arduino_example/          # Example Arduino firmware
-├── assets/themes/            # GUI colour themes
-├── config.yaml               # Configuration file
-├── requirements.txt          # Python dependencies
-├── setup.py                  # Package setup
-└── README.md                 # This file
+│   ├── USER_MANUAL_EN.md
+│   └── USER_MANUAL_DE.md
+├── tests/                        # Automated test suite
+├── arduino_example/              # Example Arduino firmware
+├── assets/themes/                # GUI colour themes
+├── config.yaml                   # Configuration file (includes web: section)
+├── requirements.txt              # Python dependencies
+├── setup.py                      # Package setup
+└── README.md                     # This file
 ```
 
-## Requirements
+## Web API Endpoints
 
-- **Operating System**: Windows (for ASCOM support)
-- **Python**: 3.8 or higher
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/status` | Full controller state as JSON |
+| GET | `/api/config` | config.yaml as JSON |
+| POST | `/api/config` | Update config.yaml |
+| POST | `/api/move` | `{ "azimuth": 180.0 }` – slew dome |
+| POST | `/api/stop` | Emergency stop |
+| POST | `/api/park` | Park at 0° |
+| POST | `/api/home` | Homing sequence |
+| POST | `/api/mode` | `{ "mode": "AUTO" \| "MANUAL" }` |
+| POST | `/api/slaved` | `{ "slaved": true \| false }` |
+| GET | `/api/cameras` | List available cameras |
+| GET | `/api/video_feed` | MJPEG stream |
+| WS | `/ws` | WebSocket – JSON state ~10 Hz |
+| GET | `/` | Serves React frontend |
+
+
 - **Hardware**:
   - ASCOM-compatible telescope mount
   - USB webcam
   - Arduino with motor controller
   - ArUco markers mounted on dome slit
+
+## Quick Start
+
+### Web Mode (recommended)
+
+```bash
+# 1. Install Python dependencies
+pip install -r requirements.txt
+
+# 2. Start the web server (port 7373)
+python src/main.py --mode web
+
+# 3. Build the frontend (optional – for production)
+cd web && npm install && npm run build
+
+# Open http://localhost:7373 in any browser
+```
+
+### GUI Mode (local Flet window, legacy)
+
+```bash
+python src/main.py --mode gui
+# or simply:
+python src/main.py
+```
+
+### Raspberry Pi (arm64/armhf)
+
+```bash
+# Install system dependencies
+sudo apt-get install python3-pip python3-venv libopencv-dev
+
+# Create virtual environment
+python3 -m venv venv && source venv/bin/activate
+
+# Install Python packages
+pip install -r requirements.txt
+
+# Start web server (accessible on the network)
+python src/main.py --mode web --port 7373
+# Open http://<raspberry-pi-ip>:7373 in any browser
+```
+
+### Development (frontend hot-reload)
+
+```bash
+# Terminal 1 – start Python API server
+python src/main.py --mode web --dev
+
+# Terminal 2 – start Vite dev server with proxy to port 7373
+cd web && npm install && npm run dev
+# Open http://localhost:5173
+```
 
 ## Installation
 
