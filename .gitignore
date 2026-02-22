@@ -142,5 +142,6 @@ PROJECT_SUMMARY.md
 # Web frontend
 web/node_modules/
 web/dist/
+web/tsconfig.tsbuildinfo
 src/static/
 
