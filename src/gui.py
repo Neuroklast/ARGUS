@@ -783,8 +783,8 @@ class ArgusGUI:
 
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
 
     # ===================================================================
     # Public API
@@ -793,8 +793,8 @@ class ArgusGUI:
         """Call page.update() once. Use after multiple property changes."""
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
 
     def update_telemetry(self, mount_az: float, dome_az: float,
                          mount_alt: float | None = None,
@@ -867,8 +867,8 @@ class ArgusGUI:
             self.log_list.controls.pop(0)
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
 
     # Backward-compatible alias
     append_log = write_log
@@ -955,8 +955,8 @@ class ArgusGUI:
 
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
 
     # ===================================================================
     # Diagnostics dialog (with loading state)
@@ -988,8 +988,8 @@ class ArgusGUI:
         dlg.open = True
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
         return dlg
 
     def show_diagnostics(self, report, dlg=None) -> None:
@@ -1086,16 +1086,16 @@ class ArgusGUI:
 
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
 
     def _close_dialog(self, dlg: ft.AlertDialog) -> None:
         """Close an open dialog."""
         dlg.open = False
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
 
     # ===================================================================
     # Help dialog
@@ -1137,8 +1137,8 @@ class ArgusGUI:
         dlg.open = True
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
 
     # ===================================================================
     # Setup wizard dialog
@@ -1239,8 +1239,8 @@ class ArgusGUI:
                              if idx == len(steps) - 1 else t("wizard.next"))
             try:
                 self.page.update()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to update Flet page: %s", e)
 
         def _on_next(e):
             if current_step[0] < len(steps) - 1:
@@ -1324,8 +1324,8 @@ class ArgusGUI:
         dlg.open = True
         try:
             self.page.update()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to update Flet page: %s", e)
 
 
 # -----------------------------------------------------------------------
