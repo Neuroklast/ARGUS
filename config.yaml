@@ -73,3 +73,18 @@ safety:
 dome:
   az_min: 0.0     # Minimum allowed azimuth (degrees) – set to restrict rotation
   az_max: 360.0   # Maximum allowed azimuth (degrees) – set to restrict rotation
+
+# Web Server
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 7373
+  token: ""           # empty = no auth, otherwise require X-API-Token header
+  cors_origins:
+    - "http://localhost:5173"
+    - "http://localhost:7373"
+  stream:
+    enabled: true
+    jpeg_quality: 75
+    fps: 15
+

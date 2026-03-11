@@ -171,6 +171,21 @@ DEFAULT_CONFIG: dict = {
         "az_min": 0.0,
         "az_max": 360.0,
     },
+    "web": {
+        "enabled": True,
+        "host": "0.0.0.0",
+        "port": 7373,
+        "token": "",
+        "cors_origins": [
+            "http://localhost:5173",
+            "http://localhost:7373",
+        ],
+        "stream": {
+            "enabled": True,
+            "jpeg_quality": 75,
+            "fps": 15,
+        },
+    },
 }
 
 # Health-state constants
@@ -1572,5 +1587,56 @@ def main(page: ft.Page):
     threading.Thread(target=_deferred_init, name="argus-init", daemon=True).start()
 
 
-if __name__ == "__main__":
+def _launch_web(args) -> None:
+    """Start the FastAPI web server."""
+    config = load_config(args.config)
+
+    # Apply port override from CLI
+    if args.port is not None:
+        config.setdefault("web", {})["port"] = args.port
+
+    from web_server import run_web_server
+    run_web_server(config)
+
+
+def _launch_gui(args) -> None:
+    """Start the local Flet GUI (legacy mode)."""
     ft.run(main)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="ARGUS Dome Control")
+    parser.add_argument(
+        "--mode",
+        choices=["web", "gui"],
+        default="gui",
+        help="Launch mode: 'web' for web server, 'gui' for local Flet GUI (default: gui)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Web server port (default: 7373, only used with --mode web)",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to config.yaml (default: auto-detect)",
+    )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Enable development mode (extra logging)",
+    )
+
+    args = parser.parse_args()
+
+    if args.dev:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if args.mode == "web":
+        _launch_web(args)
+    else:
+        _launch_gui(args)
